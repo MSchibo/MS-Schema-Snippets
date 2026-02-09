@@ -1,0 +1,20 @@
+{
+  "name": "your-vendor/site-richsnippets",
+  "type": "typo3-cms-extension",
+  "description": "MS Schema Snippets – Scanner & Queue für strukturierte Daten (FAQ & Kurse).",
+  "version": "1.0.0",
+  "license": "GPL-2.0-or-later",
+  "autoload": {
+    "psr-4": {
+      "MyVendor\\SiteRichSnippets\\": "Classes/"
+    }
+  },
+  "require": {
+    "php": ">=7.4"
+  },
+  "extra": {
+    "typo3/cms": {
+      "extension-key": "site_richsnippets"
+    }
+  }
+}

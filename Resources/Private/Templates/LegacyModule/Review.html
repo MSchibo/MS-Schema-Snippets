@@ -1,0 +1,96 @@
+{namespace f=TYPO3\CMS\Fluid\ViewHelpers}
+<f:layout name="Default" />
+
+<f:section name="Main">
+
+    <h1>Snippets prüfen &amp; übernehmen</h1>
+
+    <p>
+        <f:link.action action="scanner" controller="LegacyModule" class="btn">
+            ← Zurück zum Scanner
+        </f:link.action>
+    </p>
+
+    <f:if condition="{items -> f:count()}">
+        <f:then>
+            <f:form action="applySelected" controller="LegacyModule" method="post">
+
+                <p style="margin: 0 0 12px 0;">
+                    <button type="button" class="btn" onclick="toggleAll(true)">Alle auswählen</button>
+                    <button type="button" class="btn" onclick="toggleAll(false)">Alle abwählen</button>
+                </p>
+
+                <!-- WICHTIG: eigener Scroll-Container, weil TYPO3 Backend-Container oft nicht scrollt -->
+                <div style="height: calc(100vh - 230px); overflow: auto; padding-right: 10px;">
+
+                    <f:for each="{items}" as="it" iteration="i">
+                        <div class="section-box" style="margin-bottom:16px;">
+                            <h2 style="margin-bottom:6px;">PID {it.uid}: {it.title}</h2>
+                            <p class="group-title" style="margin: 0 0 10px 0;">Alt / Neu</p>
+
+                            <table class="list" style="width:100%; table-layout:fixed;">
+                                <colgroup>
+                                    <col style="width:50%;" />
+                                    <col style="width:50%;" />
+                                </colgroup>
+                                <tr>
+                                    <th>Alt (bestehendes Snippet)</th>
+                                    <th>Neu (Vorschlag)</th>
+                                </tr>
+                                <tr>
+                                    <td style="vertical-align:top;">
+                                        <f:if condition="{it.old}">
+                                            <f:then>
+                                                <pre class="json"
+                                                     style="max-height:420px; overflow:auto; white-space:pre; word-break:normal; margin:0; padding:10px;">
+<f:format.raw>{it.old}</f:format.raw></pre>
+                                            </f:then>
+                                            <f:else>
+                                                <em>Kein bestehendes Snippet gefunden.</em>
+                                            </f:else>
+                                        </f:if>
+                                    </td>
+                                    <td style="vertical-align:top;">
+                                        <pre class="json"
+                                             style="max-height:420px; overflow:auto; white-space:pre; word-break:normal; margin:0; padding:10px;">
+<f:format.raw>{it.new}</f:format.raw></pre>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin-top:8px;">
+                                <label>
+                                    <input type="checkbox" class="js-pid" name="pids[]" value="{it.uid}" />
+                                    Dieses Snippet übernehmen
+                                </label>
+                            </p>
+                        </div>
+                    </f:for>
+
+                </div>
+
+                <p style="margin-top: 12px;">
+                    <button type="submit" class="btn btn-primary">
+                        Ausgewählte Snippets übernehmen
+                    </button>
+                    <f:link.action action="scanner" controller="LegacyModule" class="btn">
+                        Abbrechen
+                    </f:link.action>
+                </p>
+
+            </f:form>
+
+            <script>
+                function toggleAll(on) {
+                    document.querySelectorAll('input.js-pid[type="checkbox"]').forEach(function (cb) {
+                        cb.checked = !!on;
+                    });
+                }
+            </script>
+        </f:then>
+        <f:else>
+            <p>Keine Einträge für die Prüfansicht vorhanden.</p>
+        </f:else>
+    </f:if>
+
+</f:section>

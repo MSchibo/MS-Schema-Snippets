@@ -1,0 +1,38 @@
+{namespace f=TYPO3\CMS\Fluid\ViewHelpers}
+<f:layout name="Default" />
+
+<f:section name="Main">
+    <h1>MS Schema Snippets – Queue (TYPO3 11)</h1>
+
+    <f:if condition="{queue}">
+        <table class="tx-siters-queue">
+            <thead>
+            <tr>
+                <th>UID</th>
+                <th>Page UID</th>
+                <th>Mode</th>
+                <th>Status</th>
+                <th>Reason</th>
+                <th>Created</th>
+                <th>Updated</th>
+            </tr>
+            </thead>
+            <tbody>
+            <f:for each="{queue}" as="item">
+                <tr>
+                    <td>{item.uid}</td>
+                    <td>{item.page_uid}</td>
+                    <td>{item.mode}</td>
+                    <td>{item.status}</td>
+                    <td>{item.reason}</td>
+                    <td><f:format.date format="d.m.Y H:i">{item.created_at -> f:format.date(format:'@U')}</f:format.date></td>
+                    <td><f:format.date format="d.m.Y H:i">{item.updated_at -> f:format.date(format:'@U')}</f:format.date></td>
+                </tr>
+            </f:for>
+            </tbody>
+        </table>
+    <f:else>
+        <p>Aktuell sind keine Einträge in der Queue vorhanden.</p>
+    </f:else>
+    </f:if>
+</f:section>

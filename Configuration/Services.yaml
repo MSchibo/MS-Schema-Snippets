@@ -1,0 +1,6 @@
+# Configuration/Services.yaml
+services:
+  MyVendor\SiteRichSnippets\Scheduler\SnippetTask:
+    public: true
+    autowire: true
+    autoconfigure: true   # wichtig: kein Auto-Tagging

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff version="1.0">
+  <file source-language="en" datatype="plaintext" original="messages" product-name="site_richsnippets">
+    <header/>
+    <body>
+      <!-- Text für den Modul-Tab im linken Baum -->
+      <trans-unit id="mlang_tabs_tab">
+        <source>MS Schema Snippets</source>
+      </trans-unit>
+
+      <!-- Kurze Beschreibung (Tooltip / Tab-Label) -->
+      <trans-unit id="mlang_labels_tablabel">
+        <source>MS Schema Snippets</source>
+      </trans-unit>
+
+      <trans-unit id="mlang_labels_tabdescr">
+        <source>Scanner &amp; Queue für Rich Results</source>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

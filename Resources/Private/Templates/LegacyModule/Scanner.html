@@ -1,0 +1,50 @@
+{namespace f=TYPO3\CMS\Fluid\ViewHelpers}
+<f:layout name="Default" />
+
+<f:section name="Main">
+
+    <h1>MS Schema Snippets – Scanner</h1>
+
+    <div class="section-box">
+        <p>
+            Aktuelle Seite (Pagetree): <strong>PID {pageId}</strong>
+        </p>
+
+        <p>
+            <f:form action="scanCurrentPage" controller="LegacyModule">
+                <f:form.hidden name="pageId" value="{pageId}" />
+                <button type="submit" class="btn btn-primary">
+                    Aktuelle Seite scannen ➜ Queue (pending)
+                </button>
+            </f:form>
+        </p>
+
+        <p>
+            <f:form action="scanWholeSite" controller="LegacyModule">
+                <f:form.hidden name="rootPageId" value="{pageId}" />
+                <button type="submit" class="btn">
+                    Komplette Site ab dieser Seite scannen ➜ Queue (pending)
+                </button>
+            </f:form>
+        </p>
+
+        <p>
+            <f:link.action action="queue" controller="LegacyModule" class="btn">
+                Queue öffnen
+            </f:link.action>
+        </p>
+    </div>
+
+    <div class="section-box">
+        <h2>Snippets direkt prüfen &amp; übernehmen</h2>
+        <p>Gib eine kommaseparierte Liste von Seiten-IDs ein, um für diese Seiten Alt/Neu-Snippets zu vergleichen.</p>
+
+        <f:form action="review" controller="LegacyModule" method="post">
+    <label for="pids">Seiten-IDs (z.B. 10,20,30):</label><br />
+    <f:form.textfield name="pidsRaw" id="pids" style="width:280px" value="{pidsRaw}" /><br /><br />
+    <button type="submit" class="btn">Prüfansicht öffnen</button>
+</f:form>
+
+    </div>
+
+</f:section>

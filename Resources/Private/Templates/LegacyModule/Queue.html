@@ -1,0 +1,228 @@
+{namespace f=TYPO3\CMS\Fluid\ViewHelpers}
+<f:layout name="Default" />
+
+<f:section name="Main">
+
+    <!-- Scroll-Container für die gesamte Queue-Ansicht -->
+    <div class="rs-queue-wrap"
+         style="max-height: calc(100vh - 160px); overflow-y: auto; padding-right: 8px;">
+
+        <h1>MS Schema Snippets – Queue</h1>
+
+        <p>
+            <f:link.action action="scanner" controller="LegacyModule" class="btn">
+                ← Zurück zum Scanner
+            </f:link.action>
+
+            <f:form action="processApproved" controller="LegacyModule"
+                    style="display:inline-block; margin-left:8px">
+                <button type="submit" class="btn btn-primary">
+                    Freigegebene Einträge verarbeiten (in Seiten einfügen)
+                </button>
+            </f:form>
+        </p>
+
+        <!-- Pending -->
+        <div class="section-box">
+            <h2>Ausstehende Freigaben <span class="pill pill-status-pending">pending</span></h2>
+
+            <f:if condition="{pending -> f:count()}">
+                <f:then>
+                    <table class="list">
+                        <tr>
+                            <th>UID</th>
+                            <th>PID</th>
+                            <th>Reason</th>
+                            <th>Updated</th>
+                            <th>Aktionen</th>
+                        </tr>
+                        <f:for each="{pending}" as="item">
+                            <tr>
+                                <td>{item.uid}</td>
+                                <td>{item.page_uid}</td>
+                                <td>{item.reason}</td>
+                                <td>
+                                    <f:format.date format="Y-m-d H:i">@{item.updated_at}</f:format.date>
+                                </td>
+                                <td>
+                                    <f:link.action action="show"
+                                                   controller="LegacyModule"
+                                                   arguments="{uid: item.uid}"
+                                                   class="btn btn-small">
+                                        View
+                                    </f:link.action>
+
+                                    <f:form action="approve" controller="LegacyModule"
+                                            style="display:inline-block">
+                                        <f:form.hidden name="uid" value="{item.uid}" />
+                                        <button type="submit" class="btn btn-small">
+                                            Approve
+                                        </button>
+                                    </f:form>
+
+                                    <f:form action="reject" controller="LegacyModule"
+                                            style="display:inline-block">
+                                        <f:form.hidden name="uid" value="{item.uid}" />
+                                        <button type="submit" class="btn btn-small btn-danger">
+                                            Reject
+                                        </button>
+                                    </f:form>
+                                </td>
+                            </tr>
+                        </f:for>
+                    </table>
+                </f:then>
+                <f:else>
+                    <p>Keine ausstehenden Einträge.</p>
+                </f:else>
+            </f:if>
+        </div>
+
+        <!-- Approved -->
+        <div class="section-box">
+            <h2>Freigegeben <span class="pill pill-status-approved">approved</span></h2>
+
+            <f:if condition="{approved -> f:count()}">
+                <f:then>
+                    <table class="list">
+                        <tr>
+                            <th>UID</th>
+                            <th>PID</th>
+                            <th>Reason</th>
+                            <th>Updated</th>
+                        </tr>
+                        <f:for each="{approved}" as="item">
+                            <tr>
+                                <td>{item.uid}</td>
+                                <td>{item.page_uid}</td>
+                                <td>{item.reason}</td>
+                                <td>
+                                    <f:format.date format="Y-m-d H:i">@{item.updated_at}</f:format.date>
+                                </td>
+                            </tr>
+                        </f:for>
+                    </table>
+                    <p style="margin-top:8px; font-size:13px;">
+                        Nutze den Button oben <strong>„Freigegebene Einträge verarbeiten“</strong>,
+                        um diese Snippets in die Seiten einzufügen.
+                    </p>
+                </f:then>
+                <f:else>
+                    <p>Keine freigegebenen Einträge.</p>
+                </f:else>
+            </f:if>
+        </div>
+
+        <!-- Rejected -->
+        <div class="section-box">
+            <h2>Abgelehnt <span class="pill pill-status-rejected">rejected</span></h2>
+
+            <f:if condition="{rejected -> f:count()}">
+                <f:then>
+                    <table class="list">
+                        <tr>
+                            <th>UID</th>
+                            <th>PID</th>
+                            <th>Reason</th>
+                            <th>Updated</th>
+                        </tr>
+                        <f:for each="{rejected}" as="item">
+                            <tr>
+                                <td>{item.uid}</td>
+                                <td>{item.page_uid}</td>
+                                <td>{item.reason}</td>
+                                <td>
+                                    <f:format.date format="Y-m-d H:i">@{item.updated_at}</f:format.date>
+                                </td>
+                            </tr>
+                        </f:for>
+                    </table>
+                </f:then>
+                <f:else>
+                    <p>Keine abgelehnten Einträge.</p>
+                </f:else>
+            </f:if>
+        </div>
+
+        <!-- Done -->
+        <div class="section-box">
+            <h2>Eingepflegt <span class="pill pill-status-done">done</span></h2>
+
+            <f:if condition="{done -> f:count()}">
+                <f:then>
+                    <table class="list">
+                        <tr>
+                            <th>UID</th>
+                            <th>PID</th>
+                            <th>Reason</th>
+                            <th>Updated</th>
+                            <th>Aktionen</th>
+                        </tr>
+                        <f:for each="{done}" as="item">
+                            <tr>
+                                <td>{item.uid}</td>
+                                <td>{item.page_uid}</td>
+                                <td>{item.reason}</td>
+                                <td>
+                                    <f:format.date format="Y-m-d H:i">@{item.updated_at}</f:format.date>
+                                </td>
+                                <td>
+                                    <f:link.action action="show"
+                                                   controller="LegacyModule"
+                                                   arguments="{uid: item.uid}"
+                                                   class="btn btn-small">
+                                        View
+                                    </f:link.action>
+
+                                    <f:form action="undo" controller="LegacyModule"
+                                            style="display:inline-block">
+                                        <f:form.hidden name="uid" value="{item.uid}" />
+                                        <button type="submit" class="btn btn-small btn-danger">
+                                            Undo (Snippet löschen &amp; zurück zu pending)
+                                        </button>
+                                    </f:form>
+                                </td>
+                            </tr>
+                        </f:for>
+                    </table>
+                </f:then>
+                <f:else>
+                    <p>Keine eingepflegten Einträge.</p>
+                </f:else>
+            </f:if>
+        </div>
+
+        <!-- Error -->
+        <div class="section-box">
+            <h2>Fehler <span class="pill pill-status-error">error</span></h2>
+
+            <f:if condition="{error -> f:count()}">
+                <f:then>
+                    <table class="list">
+                        <tr>
+                            <th>UID</th>
+                            <th>PID</th>
+                            <th>Reason / Error</th>
+                            <th>Updated</th>
+                        </tr>
+                        <f:for each="{error}" as="item">
+                            <tr>
+                                <td>{item.uid}</td>
+                                <td>{item.page_uid}</td>
+                                <td>{item.reason}</td>
+                                <td>
+                                    <f:format.date format="Y-m-d H:i">@{item.updated_at}</f:format.date>
+                                </td>
+                            </tr>
+                        </f:for>
+                    </table>
+                </f:then>
+                <f:else>
+                    <p>Keine Fehler-Einträge.</p>
+                </f:else>
+            </f:if>
+        </div>
+
+    </div><!-- /rs-queue-wrap -->
+
+</f:section>

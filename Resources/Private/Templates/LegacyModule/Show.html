@@ -1,0 +1,29 @@
+{namespace f=TYPO3\CMS\Fluid\ViewHelpers}
+<f:layout name="Default" />
+
+<f:section name="Main">
+
+    <h1>Queue-Eintrag #{item.uid}</h1>
+
+    <p>
+        <f:link.action action="queue" controller="LegacyModule" class="btn">
+            ← Zurück zur Queue
+        </f:link.action>
+    </p>
+
+    <div class="section-box">
+        <h2>Metadaten</h2>
+        <p><strong>Status:</strong> {item.status}</p>
+        <p><strong>Page UID:</strong> {item.page_uid}</p>
+        <p><strong>Reason:</strong> {item.reason}</p>
+        <p><strong>Updated:</strong>
+            <f:format.date format="Y-m-d H:i">@{item.updated_at}</f:format.date>
+        </p>
+    </div>
+
+    <div class="section-box">
+        <h2>Snippet JSON</h2>
+        <pre class="json"><f:format.raw>{item.snippet_json}</f:format.raw></pre>
+    </div>
+
+</f:section>

@@ -1,0 +1,21 @@
+<!--?xml version="1.0" encoding="UTF-8"?-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title>MS Schema Snippets – JSON-LD</title>
+
+  <!-- Hintergrund -->
+  <rect x="0" y="0" width="256" height="256" rx="28" fill="#FFFFFF"></rect>
+
+  <!-- Node M -->
+  <circle cx="80" cy="148" r="26" fill="none" stroke="#00A0D2" stroke-width="10"></circle>
+  <text x="80" y="156" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="32" fill="#00A0D2" text-anchor="middle">M</text>
+
+  <!-- Node S -->
+  <circle cx="176" cy="148" r="26" fill="none" stroke="#00A0D2" stroke-width="10"></circle>
+  <text x="176" y="156" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="32" fill="#00A0D2" text-anchor="middle">S</text>
+
+  <!-- Verbindungs-Linie -->
+  <line x1="106" y1="148" x2="150" y2="148" stroke="#00A0D2" stroke-width="10" stroke-linecap="round"></line>
+
+  <!-- Rich-Snippet-Symbol: <LD> -->
+  <text x="176" y="80" font-family="ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace" font-size="28" fill="#00A0D2" text-anchor="middle">&lt;LD&gt;</text>
+</svg>
