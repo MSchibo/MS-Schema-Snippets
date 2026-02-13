@@ -271,6 +271,28 @@ public function rejectAction(int $uid): void
         $this->redirect('queue');
     }
 
+    public function purgeRejectedAction(int $days = 0): void
+    {
+        $olderThan = 0;
+        if ($days > 0) {
+            $olderThan = time() - ($days * 86400);
+        }
+
+        try {
+            $cnt = $this->queueService->purgeByStatus('rejected', $olderThan);
+
+            $msg = $days > 0
+                ? $cnt . ' abgelehnte Einträge gelöscht (älter als ' . $days . ' Tage).'
+                : $cnt . ' abgelehnte Einträge gelöscht.';
+
+            $this->addFlashMessage($msg);
+        } catch (\Throwable $e) {
+            $this->addFlashMessage('Löschen fehlgeschlagen: ' . $e->getMessage());
+        }
+
+        $this->redirect('queue');
+    }
+
     // Undo: Snippet löschen + Queue-Eintrag zurück auf pending
     public function undoAction(int $uid): void
     {

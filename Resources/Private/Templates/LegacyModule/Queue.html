@@ -19,7 +19,15 @@
                     Freigegebene Einträge verarbeiten (in Seiten einfügen)
                 </button>
             </f:form>
+            <f:form action="purgeRejected" controller="LegacyModule"
+                    style="display:inline-block; margin-left:8px"
+                    onsubmit="return confirm('Wirklich alle abgelehnten Einträge löschen?');">
+                <button type="submit" class="btn btn-danger">
+                    Abgelehnte Einträge löschen
+                </button>
+            </f:form>                   
         </p>
+
 
         <div class="section-box">
             <h2>Ausstehende Freigaben <span class="pill pill-status-pending">pending</span></h2>
