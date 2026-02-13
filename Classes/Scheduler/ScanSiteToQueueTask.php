@@ -10,9 +10,9 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Scheduler\Task\AbstractTask;
 use MyVendor\SiteRichSnippets\Service\PageTreeScanner;
 use MyVendor\SiteRichSnippets\Service\ContentAnalyzer;
-use MyVendor\SiteRichSnippets\Service\SuggestionBuilder;
 use MyVendor\SiteRichSnippets\Service\QueueFactory;
 use MyVendor\SiteRichSnippets\Service\QueueInterface;
+use MyVendor\SiteRichSnippets\Snippet\SnippetService;
 
 final class ScanSiteToQueueTask extends AbstractTask
 {
@@ -33,8 +33,8 @@ final class ScanSiteToQueueTask extends AbstractTask
             $scanner  = GeneralUtility::makeInstance(PageTreeScanner::class);
             /** @var ContentAnalyzer $analyzer */
             $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
-            /** @var SuggestionBuilder $builder */
-            $builder  = GeneralUtility::makeInstance(SuggestionBuilder::class);
+            /** @var SnippetService $snippetService */
+            $snippetService = GeneralUtility::makeInstance(SnippetService::class);
             /** @var QueueInterface $queue */
             $queue    = QueueFactory::create();
 
@@ -75,8 +75,9 @@ final class ScanSiteToQueueTask extends AbstractTask
                     $data = $analyzer->enrichHints($data);
                 }
 
-                $jsonld = $builder->build($pRow, $data);
-                if (empty($jsonld)) {
+                // NEU: zentraler Generator
+                $jsonld = $snippetService->composeGraphForPage($pRow, $data);
+                if (empty($jsonld) || !is_array($jsonld)) {
                     continue;
                 }
                 $built++;

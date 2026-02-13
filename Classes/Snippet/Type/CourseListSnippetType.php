@@ -33,7 +33,6 @@ public function build(array $pageRow, array $analyzedData, array $settings = [])
     $elements = [];
     $position = 1;
 
-    // Standard-Provider: erst aus Settings, sonst TYPO3-Sitename
     $defaultProviderName = '';
     if (!empty($settings['providerName'])) {
         $defaultProviderName = trim(strip_tags((string)$settings['providerName']));
@@ -42,10 +41,8 @@ public function build(array $pageRow, array $analyzedData, array $settings = [])
     }
 
     foreach ($courses as $course) {
-        // ---------- Name ----------
         $nameRaw   = (string)($course['name'] ?? '');
         $namePlain = trim(strip_tags($nameRaw));
-
         if ($namePlain === '') {
             continue;
         }
@@ -55,17 +52,13 @@ public function build(array $pageRow, array $analyzedData, array $settings = [])
             'name'  => $namePlain,
         ];
 
-        // ---------- Description ----------
         if (!empty($course['description'])) {
-            $descRaw   = (string)$course['description'];
-            $descPlain = trim(strip_tags($descRaw));
-
+            $descPlain = trim(strip_tags((string)$course['description']));
             if ($descPlain !== '') {
                 $courseJson['description'] = $descPlain;
             }
         }
 
-        // ---------- URL ----------
         if (!empty($course['url'])) {
             $url = trim((string)$course['url']);
             if ($url !== '') {
@@ -73,11 +66,7 @@ public function build(array $pageRow, array $analyzedData, array $settings = [])
             }
         }
 
-        // ---------- Provider ----------
-        // 1) Kurs-spezifisch
         $providerRaw = (string)($course['providerName'] ?? '');
-
-        // 2) sonst Fallback aus Settings / Sitename
         if ($providerRaw === '' && $defaultProviderName !== '') {
             $providerRaw = $defaultProviderName;
         }
@@ -101,11 +90,14 @@ public function build(array $pageRow, array $analyzedData, array $settings = [])
         return [];
     }
 
-    return [
+    $snippet = [
         '@type'           => 'ItemList',
         'itemListElement' => $elements,
     ];
+
+    return [$snippet];
 }
+
 
 
 

@@ -17,13 +17,14 @@ final class SnippetInserter
      */
     public function upsert(int $pid, string $json, ?int $afterUid = null): int
     {
-        if ($json === '' || trim($json) === '{}') {
-            return 0;
-        }
+        if (trim($json) === '' || trim($json) === '{}' ) {
+        return 0;
+    }
 
         $conn = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('tt_content');
         $existingUid = $this->findExistingSnippetUid($pid);
-        $bodytext = '<script type="application/ld+json">'.$json.'</script>';
+
+        $bodytext = '<script type="application/ld+json">' . $json . '</script>';
 
         if ($existingUid) {
             $conn->update('tt_content', [
@@ -34,7 +35,6 @@ final class SnippetInserter
             return (int)$existingUid;
         }
 
-        // neues Element
         $sorting = $afterUid ? $this->sortingAfter($afterUid) : $this->nextSortingAtEnd($pid);
 
         $conn->insert('tt_content', [

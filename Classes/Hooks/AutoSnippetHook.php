@@ -6,8 +6,8 @@ namespace MyVendor\SiteRichSnippets\Hooks;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use MyVendor\SiteRichSnippets\Service\ContentAnalyzer;
-use MyVendor\SiteRichSnippets\Service\SuggestionBuilder;
 use MyVendor\SiteRichSnippets\Service\QueueService;
+use MyVendor\SiteRichSnippets\Snippet\SnippetService;
 
 final class AutoSnippetHook
 {
@@ -64,8 +64,8 @@ final class AutoSnippetHook
         /** @var ContentAnalyzer $an */
         $an = GeneralUtility::makeInstance(ContentAnalyzer::class);
 
-        /** @var SuggestionBuilder $builder */
-        $builder = GeneralUtility::makeInstance(SuggestionBuilder::class);
+        /** @var SnippetService $snippetService */
+        $snippetService = GeneralUtility::makeInstance(SnippetService::class);
 
         foreach (array_keys($affectedPids) as $pid) {
             try {
@@ -79,8 +79,9 @@ final class AutoSnippetHook
                     $data = $an->enrichHints($data);
                 }
 
-                $jsonld = $builder->build($pageRow, $data);
-                if (empty($jsonld)) {
+                // NEU: zentraler Generator
+                $jsonld = $snippetService->composeGraphForPage($pageRow, $data);
+                if (empty($jsonld) || !is_array($jsonld)) {
                     continue;
                 }
 

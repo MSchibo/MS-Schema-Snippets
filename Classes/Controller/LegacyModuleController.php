@@ -6,7 +6,7 @@ namespace MyVendor\SiteRichSnippets\Controller;
 use MyVendor\SiteRichSnippets\Service\QueueService;
 use MyVendor\SiteRichSnippets\Service\PageTreeScanner;
 use MyVendor\SiteRichSnippets\Service\ContentAnalyzer;
-use MyVendor\SiteRichSnippets\Service\SuggestionBuilder;
+use MyVendor\SiteRichSnippets\Snippet\SnippetService;
 use MyVendor\SiteRichSnippets\Service\SnippetInserter;
 use TYPO3\CMS\Extbase\Mvc\Controller\ActionController;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -87,34 +87,40 @@ final class LegacyModuleController extends ActionController
         return $row;
     }
 
-    // JSON-LD für eine einzelne Seite bauen (Analyzer + Builder)
     protected function buildSuggestionJsonForPid(int $pid): string
-    {
-        $row = $this->getPageRow($pid);
-        if (!$row) {
-            return '{}';
-        }
-
-        /** @var ContentAnalyzer $analyzer */
-        $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
-        /** @var SuggestionBuilder $builder */
-        $builder  = GeneralUtility::makeInstance(SuggestionBuilder::class);
-
-        $data = $analyzer->analyzePageContents($pid);
-        if (method_exists($analyzer, 'enrichHints')) {
-            $data = $analyzer->enrichHints($data);
-        }
-
-        $jsonld = $builder->build($row, $data);
-        if (!$jsonld || !is_array($jsonld)) {
-            $jsonld = ['@context' => 'https://schema.org', '@type' => 'WebPage'];
-        }
-
-        return json_encode(
-            $jsonld,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
-        ) ?: '{}';
+{
+    $row = $this->getPageRow($pid);
+    if (!$row) {
+        return '{}';
     }
+
+    /** @var ContentAnalyzer $analyzer */
+    $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
+
+    /** @var \MyVendor\SiteRichSnippets\Snippet\SnippetService $snippetService */
+    $snippetService = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Snippet\SnippetService::class);
+
+    $data = $analyzer->analyzePageContents($pid);
+    if (method_exists($analyzer, 'enrichHints')) {
+        $data = $analyzer->enrichHints($data);
+    }
+
+    $jsonld = $snippetService->composeGraphForPage($row, $data);
+
+    // Fallback nur wenn wirklich leer
+    if (empty($jsonld) || !is_array($jsonld)) {
+        $jsonld = [
+            '@context' => 'https://schema.org',
+            '@type'    => 'WebPage',
+            'name'     => (string)($row['title'] ?? ''),
+        ];
+    }
+
+    return json_encode(
+        $jsonld,
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
+    ) ?: '{}';
+}
 
     // -------------------------------------------------
     // Scanner-Ansicht (Start des Moduls)
@@ -325,8 +331,8 @@ public function rejectAction(int $uid): void
 
     /** @var ContentAnalyzer $analyzer */
     $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
-    /** @var SuggestionBuilder $builder */
-    $builder  = GeneralUtility::makeInstance(SuggestionBuilder::class);
+    /** @var \MyVendor\SiteRichSnippets\Snippet\SnippetService $snippetService */
+$snippetService = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Snippet\SnippetService::class);
 
     foreach ($pids as $pid) {
         $row = $this->getPageRow($pid);
@@ -339,7 +345,7 @@ public function rejectAction(int $uid): void
             $data = $analyzer->enrichHints($data);
         }
 
-        $jsonld = $builder->build($row, $data);
+        $jsonld = $snippetService->composeGraphForPage($row, $data);
 
         $items[] = [
             'uid'   => $pid,

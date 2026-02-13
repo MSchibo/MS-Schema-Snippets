@@ -44,6 +44,7 @@ final class QueueService
                 'snippet_json' => $json,
                 'updated_at'   => $now,
                 'reason'       => $reason,
+                'mode'         => $mode,
             ], [
                 'uid' => (int)$row['uid'],
             ]);
@@ -75,10 +76,10 @@ final class QueueService
         if ($status !== 'all') {
             if (is_array($status)) {
                 $qb->where($qb->expr()->in('status', ':statuses'))
-                   ->setParameter('statuses', $status, Connection::PARAM_STR_ARRAY);
+                    ->setParameter('statuses', $status, Connection::PARAM_STR_ARRAY);
             } else {
                 $qb->where('status = :status')
-                   ->setParameter('status', $status);
+                    ->setParameter('status', $status);
             }
         }
 
@@ -124,63 +125,82 @@ final class QueueService
     }
 
     /** @return array<int, array<string,mixed>> */
-private function claimAndFetch(string $status, int $limit): array
-{
-    $conn  = $this->conn();
-    $limit = max(1, $limit);
+    private function claimAndFetch(string $status, int $limit): array
+    {
+        $conn  = $this->conn();
+        $limit = max(1, $limit);
 
-    // 1) Kandidaten holen
-    $rows = $conn->createQueryBuilder()
-        ->select('*')
-        ->from(self::TABLE)
-        ->where('status = :status')
-        ->setParameter('status', $status)
-        ->orderBy('updated_at', 'ASC')
-        ->setMaxResults($limit)
-        ->executeQuery()
-        ->fetchAllAssociative();
+        // 1) Kandidaten holen
+        $rows = $conn->createQueryBuilder()
+            ->select('*')
+            ->from(self::TABLE)
+            ->where('status = :status')
+            ->setParameter('status', $status)
+            ->orderBy('updated_at', 'ASC')
+            ->setMaxResults($limit)
+            ->executeQuery()
+            ->fetchAllAssociative();
 
-    if ($rows === []) {
-        return [];
+        if ($rows === []) {
+            return [];
+        }
+
+        $uids = array_values(array_filter(array_map(
+            static fn(array $r): int => (int)($r['uid'] ?? 0),
+            $rows
+        )));
+
+        if ($uids === []) {
+            return [];
+        }
+
+        // 2) claim -> processing
+        $now = time();
+        $in  = implode(',', array_fill(0, count($uids), '?'));
+
+        // Reihenfolge muss exakt zu SQL passen:
+        // SET status=?, updated_at=?  WHERE uid IN (...) AND status=?
+        $params = array_merge(['processing', $now], $uids, [$status]);
+        $types  = array_merge(
+            [ParameterType::STRING, ParameterType::INTEGER],
+            array_fill(0, count($uids), ParameterType::INTEGER),
+            [ParameterType::STRING]
+        );
+
+        $conn->executeStatement(
+            'UPDATE ' . self::TABLE . '
+             SET status = ?, updated_at = ?
+             WHERE uid IN (' . $in . ') AND status = ?',
+            $params,
+            $types
+        );
+
+        // 3) frisch zurückholen
+        return $conn->createQueryBuilder()
+            ->select('*')
+            ->from(self::TABLE)
+            ->where('uid IN (:uids)')
+            ->setParameter('uids', $uids, Connection::PARAM_INT_ARRAY)
+            ->executeQuery()
+            ->fetchAllAssociative();
     }
 
-    $uids = array_values(array_filter(array_map(
-        static fn(array $r): int => (int)($r['uid'] ?? 0),
-        $rows
-    )));
+    public function purgeByStatus(string $status, int $olderThanTs = 0): int
+    {
+        $conn = $this->conn();
+        $qb = $conn->createQueryBuilder();
 
-    if ($uids === []) {
-        return [];
+        $qb->delete(self::TABLE)
+            ->where(
+                $qb->expr()->eq('status', $qb->createNamedParameter($status))
+            );
+
+        if ($olderThanTs > 0) {
+            $qb->andWhere(
+                $qb->expr()->lt('updated_at', $qb->createNamedParameter($olderThanTs, ParameterType::INTEGER))
+            );
+        }
+
+        return (int)$qb->executeStatement();
     }
-
-    // 2) claim -> processing (robust)
-    $now = time();
-    $in  = implode(',', array_fill(0, count($uids), '?'));
-
-    $params = array_merge(['processing', $now], $uids, [$status]);
-    $types  = array_merge(
-        [ParameterType::STRING, ParameterType::INTEGER],
-        array_fill(0, count($uids), ParameterType::INTEGER),
-        [ParameterType::STRING]
-    );
-
-    $conn->executeStatement(
-        'UPDATE ' . self::TABLE . '
-         SET status = ?, updated_at = ?
-         WHERE uid IN (' . $in . ') AND status = ?',
-        $params,
-        $types
-    );
-
-    // 3) frisch zurückholen
-    $rows2 = $conn->createQueryBuilder()
-        ->select('*')
-        ->from(self::TABLE)
-        ->where('uid IN (:uids)')
-        ->setParameter('uids', $uids, \TYPO3\CMS\Core\Database\Connection::PARAM_INT_ARRAY)
-        ->executeQuery()
-        ->fetchAllAssociative();
-
-    return $rows2;
-}
 }

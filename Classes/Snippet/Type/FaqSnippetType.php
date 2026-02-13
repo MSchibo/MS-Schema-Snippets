@@ -24,68 +24,77 @@ final class FaqSnippetType implements SnippetTypeInterface
     }
 
     public function build(array $pageRow, array $analyzedData, array $settings = []): array
-{
-    $items = $this->extractItems($analyzedData);
-    if (empty($items)) {
-        return [];
-    }
-
-    $questions = [];
-    foreach ($items as $item) {
-        $q = trim((string)($item['q'] ?? $item['question'] ?? ''));
-        $a = trim((string)($item['a'] ?? $item['answer'] ?? ''));
-
-        if ($q === '' || $a === '') {
-            continue;
+    {
+        $items = $this->extractItems($analyzedData);
+        if (empty($items)) {
+            return [];
         }
 
-        // *** NEU: Antwort sicher in Plain-Text wandeln ***
-        $aPlain = trim(strip_tags($a));
+        $questions = [];
+        foreach ($items as $item) {
+            $q = trim((string)($item['q'] ?? $item['question'] ?? ''));
+            $a = trim((string)($item['a'] ?? $item['answer'] ?? ''));
 
-        if ($aPlain === '') {
-            continue;
+            if ($q === '' || $a === '') {
+                continue;
+            }
+
+            $aPlain = trim(strip_tags($a));
+            if ($aPlain === '') {
+                continue;
+            }
+
+            $questions[] = [
+                '@type' => 'Question',
+                'name'  => $q,
+                'acceptedAnswer' => [
+                    '@type' => 'Answer',
+                    'text'  => $aPlain,
+                ],
+            ];
         }
 
-        $questions[] = [
-            '@type' => 'Question',
-            'name'  => $q,
-            'acceptedAnswer' => [
-                '@type' => 'Answer',
-                'text'  => $aPlain,
-            ],
+        if (empty($questions)) {
+            return [];
+        }
+
+        $snippet = [
+            '@type'      => 'FAQPage',
+            'name'       => (string)($pageRow['title'] ?? ''),
+            'mainEntity' => $questions,
         ];
-    }
 
-    if (empty($questions)) {
-        return [];
+        return [$snippet];
     }
-
-    return [
-        '@type'      => 'FAQPage',
-        'name'       => (string)($pageRow['title'] ?? ''),
-        'mainEntity' => $questions,
-    ];
-}
 
     /**
-     * Holt FAQ-Einträge aus dem Analyzer-Array.
-     *
-     * @param array<string,mixed> $analyzedData
-     * @return array<int,array<string,string>>
+     * Erwartet vom Analyzer z.B.:
+     * [
+     *   'faq' => [
+     *     ['q' => 'Frage?', 'a' => 'Antwort ...'],
+     *     ...
+     *   ]
+     * ]
+     * oder
+     * [
+     *   'faqs' => [...],
+     *   'faqItems' => [...],
+     * ]
      */
     private function extractItems(array $analyzedData): array
     {
-        // Deine aktuelle Struktur: 'faqs' => [['q' => '...', 'a' => '...'], ...]
-        if (!empty($analyzedData['faqs']) && is_array($analyzedData['faqs'])) {
-            return $analyzedData['faqs'];
-        }
+        $candidates = [
+            'faq',
+            'faqs',
+            'faqItems',
+            'faq_items',
+            'questions',
+        ];
 
-        // Fallbacks, falls du irgendwann umbenennst
-        if (!empty($analyzedData['faqItems']) && is_array($analyzedData['faqItems'])) {
-            return $analyzedData['faqItems'];
-        }
-        if (!empty($analyzedData['faq']) && is_array($analyzedData['faq'])) {
-            return $analyzedData['faq'];
+        foreach ($candidates as $key) {
+            if (!empty($analyzedData[$key]) && is_array($analyzedData[$key])) {
+                return $analyzedData[$key];
+            }
         }
 
         return [];

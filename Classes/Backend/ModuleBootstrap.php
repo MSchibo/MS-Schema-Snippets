@@ -17,10 +17,9 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 // CSRF v13+
 use TYPO3\CMS\Core\FormProtection\FormProtectionFactory;
-
 use MyVendor\SiteRichSnippets\Service\PageTreeScanner;
 use MyVendor\SiteRichSnippets\Service\ContentAnalyzer;
-use MyVendor\SiteRichSnippets\Service\SuggestionBuilder;
+use MyVendor\SiteRichSnippets\Service\SnippetService;
 use MyVendor\SiteRichSnippets\Service\SnippetInserter;
 use MyVendor\SiteRichSnippets\Service\QueueService;
 use MyVendor\SiteRichSnippets\Service\SettingsService;
@@ -30,7 +29,7 @@ final class ModuleBootstrap
 {
     private array $stats = ['scanned' => 0, 'suggestions' => 0];
 
-        public function __invoke(ServerRequestInterface $request): ResponseInterface
+    public function __invoke(ServerRequestInterface $request): ResponseInterface
     {
         $get  = (array)$request->getQueryParams();
         $post = (array)$request->getParsedBody();
@@ -52,67 +51,93 @@ final class ModuleBootstrap
             'q'      => $q,
         ]);
 
+        // ===== QUEUE: Undo eingepflegter Eintrag (Status done -> pending + Snippet löschen) =====
+        if ($action === 'queueUndo' && $request->getMethod() === 'POST' && isset($q['qid'])) {
+            if ($resp = $this->assertValidTokenOrRedirect($request, $q)) { return $resp; }
 
-// ===== QUEUE: Undo eingepflegter Eintrag (Status done -> pending + Snippet löschen) =====
-if ($action === 'queueUndo' && $request->getMethod() === 'POST' && isset($q['qid'])) {
-    if ($resp = $this->assertValidTokenOrRedirect($request, $q)) { return $resp; }
+            $qid = (int)$q['qid'];
 
-    $qid = (int)$q['qid'];
+            /** @var QueueService $qs */
+            $qs = GeneralUtility::makeInstance(QueueService::class);
+            $allRows = $qs->list('all');
+            $row = null;
 
-    /** @var QueueService $qs */
-    $qs = GeneralUtility::makeInstance(QueueService::class);
-    $allRows = $qs->list('all');
-    $row = null;
+            foreach ($allRows as $r) {
+                if ((int)($r['uid'] ?? 0) === $qid) {
+                    $row = $r;
+                    break;
+                }
+            }
 
-    foreach ($allRows as $r) {
-        if ((int)($r['uid'] ?? 0) === $qid) {
-            $row = $r;
-            break;
+            if (!$row) {
+                return new RedirectResponse(
+                    $this->moduleUrl([
+                        'id'     => (int)($q['id'] ?? 0),
+                        'action' => 'queue',
+                        'msg'    => 'Undo fehlgeschlagen: Eintrag nicht gefunden.',
+                    ]),
+                    303
+                );
+            }
+
+            $pid = (int)($row['page_uid'] ?? 0);
+
+            /** @var SnippetInserter $insert */
+            $insert = GeneralUtility::makeInstance(SnippetInserter::class);
+
+            try {
+                // Snippet auf der Seite entfernen
+                if (method_exists($insert, 'delete')) {
+                    $insert->delete($pid);
+                } else {
+                    // Fallback: leeren Inhalt schreiben
+                    $insert->upsert($pid, '', null);
+                }
+
+                // Queue-Eintrag wieder auf "pending" setzen
+                $qs->setStatus($qid, 'pending', 'undo');
+
+                $msg = 'Snippet auf PID '.$pid.' entfernt, Eintrag wieder bei "Ausstehende Freigaben".';
+            } catch (\Throwable $e) {
+                $msg = 'Undo-Fehler: ' . $e->getMessage();
+            }
+
+            return new RedirectResponse(
+                $this->moduleUrl([
+                    'id'     => (int)($q['id'] ?? 0),
+                    'action' => 'queue',
+                    'msg'    => $msg,
+                ]),
+                303
+            );
         }
-    }
 
-    if (!$row) {
-        return new RedirectResponse(
-            $this->moduleUrl([
-                'id'     => (int)($q['id'] ?? 0),
-                'action' => 'queue',
-                'msg'    => 'Undo fehlgeschlagen: Eintrag nicht gefunden.',
-            ]),
-            303
-        );
-    }
+        // ===== QUEUE: Rejected löschen (purge) =====
+        if ($action === 'queuePurgeRejected' && $request->getMethod() === 'POST') {
+            if ($resp = $this->assertValidTokenOrRedirect($request, $q)) { return $resp; }
 
-    $pid = (int)($row['page_uid'] ?? 0);
+            /** @var QueueService $qs */
+            $qs = GeneralUtility::makeInstance(QueueService::class);
 
-    /** @var SnippetInserter $insert */
-    $insert = GeneralUtility::makeInstance(SnippetInserter::class);
+            // optional: nur ältere löschen, z.B. 30 Tage
+            $days = (int)($q['days'] ?? 0);
+            $olderThan = 0;
+            if ($days > 0) {
+                $olderThan = time() - ($days * 86400);
+            }
 
-    try {
-        // Snippet auf der Seite entfernen
-        if (method_exists($insert, 'delete')) {
-            $insert->delete($pid);
-        } else {
-            // Fallback: leeren Inhalt schreiben
-            $insert->upsert($pid, '', null);
+            try {
+                $cnt = $qs->purgeByStatus('rejected', $olderThan);
+                $msg = $cnt . ' abgelehnte Einträge gelöscht.';
+            } catch (\Throwable $e) {
+                $msg = 'Löschen fehlgeschlagen: ' . $e->getMessage();
+            }
+
+            return new RedirectResponse(
+                $this->moduleUrl(['id' => (int)($q['id'] ?? 0), 'action' => 'queue', 'msg' => $msg]),
+                303
+            );
         }
-
-        // Queue-Eintrag wieder auf "pending" setzen
-        $qs->setStatus($qid, 'pending', 'undo');
-
-        $msg = 'Snippet auf PID '.$pid.' entfernt, Eintrag wieder bei "Ausstehende Freigaben".';
-    } catch (\Throwable $e) {
-        $msg = 'Undo-Fehler: ' . $e->getMessage();
-    }
-
-    return new RedirectResponse(
-        $this->moduleUrl([
-            'id'     => (int)($q['id'] ?? 0),
-            'action' => 'queue',
-            'msg'    => $msg,
-        ]),
-        303
-    );
-}
 
         // ===== Einzel-JSON: Download =====
         if ($action === 'download' && isset($q['pid'])) {
@@ -143,66 +168,63 @@ if ($action === 'queueUndo' && $request->getMethod() === 'POST' && isset($q['qid
                   . $this->h($json)
                   . '</pre></div>';
 
-            return new HtmlResponse($html);
+            return $this->html($html);
         }
 
-// ===== INSERT: direkt in die Seite schreiben (ohne Queue) =====
-if ($action === 'insert' && isset($q['pid'])) {
-    // CSRF nur bei POST hart prüfen, GET lassen wir (zur Not) durch,
-    // damit der Button im Backend sicher funktioniert.
-    if ($request->getMethod() === 'POST') {
-        if ($resp = $this->assertValidTokenOrRedirect($request, $q)) {
-            return $resp;
+        // ===== Insert =====
+        if ($action === 'insert' && isset($q['pid'])) {
+            // CSRF nur bei POST hart prüfen, GET lassen wir (zur Not) durch,
+            // damit der Button im Backend sicher funktioniert.
+            if ($request->getMethod() === 'POST') {
+                if ($resp = $this->assertValidTokenOrRedirect($request, $q)) {
+                    return $resp;
+                }
+            }
+
+            $pid  = (int)$q['pid'];
+            $json = $this->buildSuggestionJsonForPid($pid);
+
+            $this->dbg('insert_called', [
+                'method'     => $request->getMethod(),
+                'pid'        => $pid,
+                'json_empty' => ($json === '' || trim($json) === '{}'),
+            ]);
+
+            if ($json === '' || trim($json) === '{}') {
+                return new RedirectResponse(
+                    $this->moduleUrl([
+                        'id'   => $pid,
+                        'scan' => (string)($q['scan'] ?? 'site'),
+                        'msg'  => 'Kein valides Snippet erzeugt.',
+                    ]),
+                    303
+                );
+            }
+
+            /** @var SnippetInserter $insert */
+            $insert = GeneralUtility::makeInstance(SnippetInserter::class);
+
+            try {
+                $insert->upsert($pid, $json, null);
+                $msg = 'Snippet eingefügt.';
+            } catch (\Throwable $e) {
+                $msg = 'Fehler beim Einfügen: ' . $e->getMessage();
+                $this->dbg('insert_error', [
+                    'pid' => $pid,
+                    'msg' => $e->getMessage(),
+                ]);
+            }
+
+            return new RedirectResponse(
+                $this->moduleUrl([
+                    'id'   => $pid,
+                    'scan' => (string)($q['scan'] ?? 'site'),
+                    'msg'  => $msg,
+                ]),
+                303
+            );
         }
-    }
 
-    $pid  = (int)$q['pid'];
-    $json = $this->buildSuggestionJsonForPid($pid);
-
-    $this->dbg('insert_called', [
-        'method'     => $request->getMethod(),
-        'pid'        => $pid,
-        'json_empty' => ($json === '' || trim($json) === '{}'),
-    ]);
-
-    if ($json === '' || trim($json) === '{}') {
-        return new RedirectResponse(
-            $this->moduleUrl([
-                'id'   => $pid,
-                'scan' => (string)($q['scan'] ?? 'site'),
-                'msg'  => 'Kein valides Snippet erzeugt.',
-            ]),
-            303
-        );
-    }
-
-    /** @var \MyVendor\SiteRichSnippets\Service\SnippetInserter $insert */
-    $insert = GeneralUtility::makeInstance(SnippetInserter::class);
-
-    try {
-        $insert->upsert($pid, $json, null);
-        $msg = 'Snippet eingefügt.';
-    } catch (\Throwable $e) {
-        $msg = 'Fehler beim Einfügen: ' . $e->getMessage();
-        $this->dbg('insert_error', [
-            'pid' => $pid,
-            'msg' => $e->getMessage(),
-        ]);
-    }
-
-    return new RedirectResponse(
-        $this->moduleUrl([
-            'id'   => $pid,
-            'scan' => (string)($q['scan'] ?? 'site'),
-            'msg'  => $msg,
-        ]),
-        303
-    );
-}
-
-
-
-        // ===== QUEUE: View Eintrag =====
         if ($action === 'queueView' && isset($q['qid'])) {
             $qid = (int)$q['qid'];
             /** @var QueueService $qs */
@@ -232,10 +254,9 @@ if ($action === 'insert' && isset($q['pid'])) {
                   . $this->h($json)
                   . '</pre></div>';
 
-            return new HtmlResponse($html);
+            return $this->html($html);
         }
 
-        // ===== QUEUE: Download Eintrag =====
         if ($action === 'queueDownload' && isset($q['qid'])) {
             $qid = (int)$q['qid'];
             /** @var QueueService $qs */
@@ -293,8 +314,8 @@ if ($action === 'insert' && isset($q['pid'])) {
                     $scanner      = GeneralUtility::makeInstance(PageTreeScanner::class);
                     /** @var ContentAnalyzer $analyzer */
                     $analyzer     = GeneralUtility::makeInstance(ContentAnalyzer::class);
-                    /** @var SuggestionBuilder $builder */
-                    $builder      = GeneralUtility::makeInstance(SuggestionBuilder::class);
+                    /** @var \MyVendor\SiteRichSnippets\Snippet\SnippetService $snippetService */
+                    $snippetService = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Snippet\SnippetService::class);
                     /** @var QueueService $queueService */
                     $queueService = GeneralUtility::makeInstance(QueueService::class);
 
@@ -309,7 +330,7 @@ if ($action === 'insert' && isset($q['pid'])) {
                             $data = $analyzer->enrichHints($data);
                         }
 
-                        $jsonld = $builder->build($pRow, $data);
+                        $jsonld = $snippetService->composeGraphForPage($pRow, $data);
                         if (empty($jsonld)) {
                             error_log("PID $pid: No JSON-LD generated - data: " . json_encode($data));
                             continue;
@@ -401,6 +422,17 @@ foreach ($allRows as $row) {
 
             // Jetzt komplette Site scannen & in Queue legen
             $html .= $formScanAll;
+
+            $purgeUrl = $this->moduleUrl(['id' => (int)($q['id'] ?? 0), 'action' => 'queuePurgeRejected']);
+
+            $html .= '<form method="post" action="' . $this->h($purgeUrl) . '" style="display:inline-block;margin-left:8px">'
+                . '<input type="hidden" name="moduleToken" value="' . $this->h($this->moduleToken($request)) . '">'
+                . '<input type="hidden" name="days" value="0">'
+                . '<button type="submit" onclick="return confirm(\'Wirklich alle abgelehnten Einträge löschen?\')">'
+                . 'Abgelehnte löschen'
+                . '</button>'
+                . '</form>';
+
 
             $html .= '</div>';
 
@@ -529,8 +561,8 @@ if (empty($done)) {
 
             $html .= '</div>';
 
-            return new HtmlResponse($html);
-        }
+            return $this->html($html);
+    }
        
 
         // ===== QUEUE: approve / reject =====
@@ -616,7 +648,7 @@ if (empty($done)) {
                       . '</form> '
                       . '<a class="btn btn-default" href="'.$backUrl.'">Abbrechen</a>'
                       . '</div>';
-                return new HtmlResponse($html);
+                return $this->html($html);
             }
 
             $ok = 0; $fail = 0;
@@ -651,15 +683,15 @@ if (empty($done)) {
             );
         }
 
-        // ===== Review (mehrere PIDs vergleichen) =====
+                // ===== Review (mehrere PIDs vergleichen) =====
         if ($action === 'review' && !empty($q['pids'])) {
             $pidList = array_filter(array_map('intval', (array)$q['pids']));
             $items   = [];
 
             /** @var ContentAnalyzer $an */
             $an = GeneralUtility::makeInstance(ContentAnalyzer::class);
-            /** @var SuggestionBuilder $bu */
-            $bu = GeneralUtility::makeInstance(SuggestionBuilder::class);
+            /** @var \MyVendor\SiteRichSnippets\Snippet\SnippetService $snippetService */
+            $snippetService = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Snippet\SnippetService::class);
 
             foreach ($pidList as $pid) {
                 $row = $this->getPageRow($pid);
@@ -669,14 +701,14 @@ if (empty($done)) {
                 if (method_exists($an, 'enrichHints')) {
                     $data = $an->enrichHints($data);
                 }
-                $jsonld = $bu->build($row, $data);
+                $jsonld = $snippetService->composeGraphForPage($row, $data);
 
                 $items[] = [
-                    'uid'        => $pid,
-                    'title'      => (string)($row['title'] ?? ''),
-                    'path'       => $this->buildPath($pid),
-                    'old'        => $this->fetchExistingSnippetJson($pid),
-                    'new'        => json_encode($jsonld, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT),
+                    'uid'   => $pid,
+                    'title' => (string)($row['title'] ?? ''),
+                    'path'  => $this->buildPath($pid),
+                    'old'   => $this->fetchExistingSnippetJson($pid),
+                    'new'   => json_encode($jsonld, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT),
                 ];
             }
 
@@ -685,7 +717,7 @@ if (empty($done)) {
                 'scan' => (string)($q['scan'] ?? 'site'),
             ]);
 
-            $css = <<<CSS
+            $reviewCss = <<<CSS
 <style>
 .rsR{font:14px/1.5 system-ui,Segoe UI,Roboto,Arial}
 .rsR .wrap{max-width:1200px;margin:0 auto;padding:16px}
@@ -701,22 +733,17 @@ if (empty($done)) {
 </style>
 CSS;
 
-            $html  = $css.'<div class="rsR"><div class="wrap">';
+            $html  = $reviewCss.'<div class="rsR"><div class="wrap">';
             $html .= '<div class="top">'
                    . '<a class="btn" href="'.$this->h($backUrl).'">← Zurück</a>'
                    . '<strong>Snippets prüfen &amp; übernehmen</strong>'
                    . '</div>';
 
-            // Einfaches GET-Formular wie bei den anderen Buttons
-$html .= '<form method="get" action="'.$this->h($this->moduleUrl()).'">';
-
-// id + scan wieder mitgeben, damit wir nachher zurück auf dieselbe Ansicht kommen
-$html .= '<input type="hidden" name="id" value="'.(int)($q['id'] ?? 0).'">';
-$html .= '<input type="hidden" name="scan" value="'.$this->h((string)($q['scan'] ?? 'site')).'">';
-
-// Zielaktion: applySelected
-$html .= '<input type="hidden" name="action" value="applySelected">';
-
+            // GET-Formular
+            $html .= '<form method="get" action="'.$this->h($this->moduleUrl()).'">';
+            $html .= '<input type="hidden" name="id" value="'.(int)($q['id'] ?? 0).'">';
+            $html .= '<input type="hidden" name="scan" value="'.$this->h((string)($q['scan'] ?? 'site')).'">';
+            $html .= '<input type="hidden" name="action" value="applySelected">';
 
             $html .= '<div class="grid">';
 
@@ -745,88 +772,72 @@ $html .= '<input type="hidden" name="action" value="applySelected">';
                        .   '</div></div>';
             }
 
-            $html .= '</div>'
-                   . '<div style="margin-top:14px;display:flex;gap:10px">'
+            $html .= '</div>';
+            $html .= '<div style="margin-top:14px;display:flex;gap:10px">'
                    .   '<button class="btn btn-info" type="submit">Ausgewählte übernehmen</button>'
                    .   '<a class="btn btn-default" href="'.$this->h($backUrl).'">← Zurück</a>'
-                   . '</div>'
-                   . '</form>';
+                   . '</div>';
+            $html .= '</form>';
+            $html .= '</div></div>';
 
-            return new HtmlResponse($html);
-        }
+            return $this->html($html);
+        } 
 
-if ($action === 'applySelected') {
-    // Wir nutzen hier bewusst GET (wie bei den anderen Buttons im Modul),
-    // deshalb KEIN harter CSRF-Check.
+        // ===== Apply Selected (aus Prüfliste) =====
+        if ($action === 'applySelected') {
+            // Wir nutzen hier bewusst GET (wie bei den anderen Buttons im Modul),
+            // deshalb KEIN harter CSRF-Check.
 
-    $apply     = (array)($q['apply'] ?? []);
-    $applyPids = array_filter(array_map('intval', $apply));
+            $apply     = (array)($q['apply'] ?? []);
+            $applyPids = array_filter(array_map('intval', $apply));
 
-    /** @var SnippetInserter $inserter */
-    $inserter  = GeneralUtility::makeInstance(SnippetInserter::class);
+            /** @var SnippetInserter $inserter */
+            $inserter  = GeneralUtility::makeInstance(SnippetInserter::class);
 
-    $ok = 0; 
-    $errors = [];
+            $ok = 0;
+            $errors = [];
 
-    foreach ($applyPids as $pid) {
-        try {
-            $json = $this->buildSuggestionJsonForPid($pid);
-            if ($json === '' || trim($json) === '{}') {
-                continue;
+            foreach ($applyPids as $pid) {
+                try {
+                    $json = $this->buildSuggestionJsonForPid($pid);
+                    if ($json === '' || trim($json) === '{}') {
+                        continue;
+                    }
+                    $inserter->upsert($pid, $json, null);
+                    $ok++;
+                } catch (\Throwable $e) {
+                    $errors[] = 'PID ' . $pid . ': ' . $e->getMessage();
+                }
             }
-            $inserter->upsert($pid, $json, null);
-            $ok++;
-        } catch (\Throwable $e) {
-            $errors[] = 'PID ' . $pid . ': ' . $e->getMessage();
-        }
-    }
 
-    $msg = $ok . ' Snippets übernommen.';
-    if (!empty($errors)) {
-        $msg .= ' Fehler: ' . implode(', ', $errors);
-    }
+            $msg = $ok . ' Snippets übernommen.';
+            if (!empty($errors)) {
+                $msg .= ' Fehler: ' . implode(', ', $errors);
+            }
 
-    return new RedirectResponse($this->moduleUrl([
-        'id'   => (int)($q['id'] ?? 0),
-        'scan' => (string)($q['scan'] ?? 'site'),
-        'msg'  => $msg,
-    ]), 303);
-}
-
-
-
+            return new RedirectResponse(
+                $this->moduleUrl([
+                    'id'   => (int)($q['id'] ?? 0),
+                    'scan' => (string)($q['scan'] ?? 'site'),
+                    'msg'  => $msg,
+                ]),
+                303
+            );
+        } 
 
         // ===== Standard-UI (Scanner) =====
-
         $controls  = '<div style="margin:0 0 16px;display:flex;gap:8px;align-items:center">';
         $controls .= '<a class="btn btn-default" href="'.$this->h($this->moduleUrl(['id'=>(int)$id,'scan'=>'current'])).'">Scan current page</a>';
         $controls .= '<a class="btn btn-default" href="'.$this->h($this->moduleUrl(['id'=>(int)$id,'scan'=>'site'])).'">Scan whole site</a>';
         $controls .= '</div>';
 
-
-
         if (($q['scan'] ?? '') === 'site') {
             $controls .= '<a class="btn btn-info" href="'.$this->h($this->moduleUrl(['id' => (int)$id, 'scan' => 'site', 'action' => 'apply_all'])).'"style="margin:-8px 0 16px">Alle anwenden</a>';
         }
 
-        // Nur noch Queue-Link, KEINE Einstellungen mehr
         $controls .= '<div style="margin:-8px 0 16px;display:flex;gap:8px">'
                    .   '<a class="btn btn-default" href="'.$this->h($this->moduleUrl(['id'=>(int)$id,'action'=>'queue'])).'">Queue öffnen</a>'
                    . '</div>';
-
-        $css = '<style>
-.rs-wrap{padding:20px;font:14px/1.5 system-ui,Segoe UI,Roboto,Arial;height:calc(100vh - 140px);overflow:auto}
-.rs-summary{margin:12px 0;padding:10px;border:1px solid #e2e2e2;border-radius:8px;background:#fafafa}
-.rs-table{width:100%;border-collapse:collapse;table-layout:fixed}
-.rs-table th,.rs-table td{padding:6px;border-bottom:1px solid #ddd;vertical-align:top}
-.rs-pre{white-space:pre-wrap;word-break:break-word;background:#f7f7f7;padding:8px;border:1px solid #eee;border-radius:6px;max-height:260px;overflow:auto}
-.rs-col-pid{width:70px}
-.rs-col-path{width:28%}
-.rs-col-actions{width:200px}
-.rs-actions form{display:inline}
-.rs-actions .btn{display:block;margin-bottom:8px;width:100%}
-.rs-group{background:#f0f4ff;border-top:2px solid #cfe0ff;border-bottom:1px solid #cfe0ff;padding:6px 8px;font-weight:600}
-</style>';
 
         $msgHtml = '';
         if (!empty($q['msg'])) {
@@ -852,8 +863,9 @@ if ($action === 'applySelected') {
             $content .= '<p>Wähle eine Option oben.</p>';
         }
 
-        return new HtmlResponse($css.'<div class="rs-wrap">'.$content.'</div>');
+        return $this->html($content);
     }
+
 
     /* ========================= Scans ========================= */
 
@@ -876,79 +888,90 @@ private function evaluatePages(array $pages): array
 {
     $out = [];
 
-    // ==== Services initialisieren (mit Fehlerfang) ====
     try {
         /** @var ContentAnalyzer $analyzer */
         $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
     } catch (\Throwable $e) {
-        // Wenn schon der Analyzer nicht gebaut werden kann → lieber sauber abbrechen
-        $this->dbg('analyzer_init_error', [
-            'msg' => $e->getMessage(),
-        ]);
+        $this->dbg('analyzer_init_error', ['msg' => $e->getMessage()]);
         error_log('[site_richsnippets] Analyzer init error: ' . $e->getMessage());
         return $out;
     }
 
     try {
-        /** @var SuggestionBuilder $builder */
-        $builder = GeneralUtility::makeInstance(SuggestionBuilder::class);
+        /** @var \MyVendor\SiteRichSnippets\Snippet\SnippetService $snippetService */
+        $snippetService = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Snippet\SnippetService::class);
     } catch (\Throwable $e) {
-        // Gleiches Spiel für den Builder (inkl. Registry/SettingsService)
-        $this->dbg('builder_init_error', [
-            'msg' => $e->getMessage(),
-        ]);
-        error_log('[site_richsnippets] SuggestionBuilder init error: ' . $e->getMessage());
+        $this->dbg('snippetservice_init_error', ['msg' => $e->getMessage()]);
+        error_log('[site_richsnippets] SnippetService init error: ' . $e->getMessage());
         return $out;
     }
 
-    // ==== Seiten durchlaufen ====
     foreach ($pages as $p) {
         $this->stats['scanned']++;
 
-        $pid   = (int)($p['uid'] ?? 0);
-        $title = (string)($p['title'] ?? '');
-        $path  = $this->buildPath($pid);
-
+        $pid = (int)($p['uid'] ?? 0);
         if ($pid <= 0) {
             $this->dbg('skip_page_invalid_pid', ['row' => $p]);
             continue;
         }
 
-        // ---- Analyse ----
+        // echte PageRow bevorzugen
+        $pageRow = $this->getPageRow($pid) ?? $p;
+
+        $title = (string)($pageRow['title'] ?? '');
+        $path  = $this->buildPath($pid);
+
+        $data = [];
+        $analyzeOk = true;
+
+        // ---- Analyse (aber NICHT mehr "continue" bei Fehler) ----
         try {
             $data = $analyzer->analyzePageContents($pid);
             if (method_exists($analyzer, 'enrichHints')) {
                 $data = $analyzer->enrichHints($data);
             }
         } catch (\Throwable $e) {
-            $this->dbg('analyze_error', [
-                'pid' => $pid,
-                'msg' => $e->getMessage(),
-            ]);
-            // Seite überspringen, aber Scanner läuft weiter
-            continue;
+            $analyzeOk = false;
+            $this->dbg('analyze_error', ['pid' => $pid, 'msg' => $e->getMessage()]);
+            error_log('[site_richsnippets] PID ' . $pid . ': analyzePageContents() error: ' . $e->getMessage());
+            // wir machen weiter mit Fallback
         }
 
-        if (empty($data)) {
-            error_log("[site_richsnippets] PID $pid: No data from analyzer");
-        }
+        $jsonld = null;
+        $composeOk = true;
 
-        // ---- JSON-LD aufbauen ----
+        // ---- Compose (auch hier nicht hart abbrechen) ----
         try {
-            $jsonld = $builder->build($p, $data);
+            $jsonld = $snippetService->composeGraphForPage($pageRow, $data);
         } catch (\Throwable $e) {
-            $this->dbg('build_error', [
-                'pid' => $pid,
-                'msg' => $e->getMessage(),
-            ]);
-            error_log('[site_richsnippets] PID ' . $pid . ': build() error: ' . $e->getMessage());
-            // auch hier: Seite überspringen, aber weiter machen
-            continue;
+            $composeOk = false;
+            $this->dbg('compose_error', ['pid' => $pid, 'msg' => $e->getMessage()]);
+            error_log('[site_richsnippets] PID ' . $pid . ': composeGraphForPage() error: ' . $e->getMessage());
         }
 
-        if (empty($jsonld) || !is_array($jsonld)) {
-            error_log("[site_richsnippets] PID $pid: No JSON-LD from builder - data: " . json_encode($data));
-            continue;
+        // "Vorschlag" nur zählen, wenn wirklich Inhalte da sind
+        // (Wenn dein SnippetService ein @graph liefert, zählen wir nur, wenn @graph nicht leer ist)
+        $isSuggestion = false;
+        if (is_array($jsonld) && $jsonld !== []) {
+            if (isset($jsonld['@graph']) && is_array($jsonld['@graph'])) {
+                $isSuggestion = count($jsonld['@graph']) > 0;
+            } else {
+                // falls du nicht im Graph-Format bist
+                $isSuggestion = true;
+            }
+        }
+
+        if ($isSuggestion) {
+            $this->stats['suggestions']++;
+        }
+
+        // Fallback, damit UI NIE leer bleibt
+        if (!is_array($jsonld) || $jsonld === []) {
+            $jsonld = [
+                '@context' => 'https://schema.org',
+                '@type'    => 'WebPage',
+                'name'     => (string)($pageRow['title'] ?? ''),
+            ];
         }
 
         $out[] = [
@@ -956,8 +979,10 @@ private function evaluatePages(array $pages): array
             'title'      => $title,
             'path'       => $path,
             'suggestion' => $jsonld,
+
+            // optional: wenn du später im Template/Render debuggen willst
+            // 'debug' => ['analyzeOk' => $analyzeOk, 'composeOk' => $composeOk],
         ];
-        $this->stats['suggestions']++;
     }
 
     return $out;
@@ -1081,25 +1106,52 @@ private function evaluatePages(array $pages): array
     /* ========================= JSON/DB Helper ========================= */
 
     private function buildSuggestionJsonForPid(int $pid): string
-    {
-        $row = $this->getPageRow($pid);
-        if (!$row) { return '{}'; }
+{
+    $row = $this->getPageRow($pid);
+    if (!$row) {
+        return '{}';
+    }
 
-        /** @var ContentAnalyzer $analyzer */
-        $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
-        /** @var SuggestionBuilder $builder */
-        $builder  = GeneralUtility::makeInstance(SuggestionBuilder::class);
+    /** @var ContentAnalyzer $analyzer */
+    $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
 
+    /** @var \MyVendor\SiteRichSnippets\Snippet\SnippetService $snippetService */
+    $snippetService = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Snippet\SnippetService::class);
+
+    $data = [];
+    try {
         $data = $analyzer->analyzePageContents($pid);
         if (method_exists($analyzer, 'enrichHints')) {
             $data = $analyzer->enrichHints($data);
         }
-
-        $jsonld = $builder->build($row, $data);
-        if (!$jsonld) { $jsonld = ['@context' => 'https://schema.org', '@type' => 'WebPage']; }
-
-        return json_encode($jsonld, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT) ?: '{}';
+    } catch (\Throwable $e) {
+        $this->dbg('build_analyze_error', ['pid' => $pid, 'msg' => $e->getMessage()]);
+        error_log('[site_richsnippets] PID ' . $pid . ': buildSuggestion analyze error: ' . $e->getMessage());
+        $data = [];
     }
+
+    try {
+        $jsonld = $snippetService->composeGraphForPage($row, $data);
+    } catch (\Throwable $e) {
+        $this->dbg('build_compose_error', ['pid' => $pid, 'msg' => $e->getMessage()]);
+        error_log('[site_richsnippets] PID ' . $pid . ': buildSuggestion compose error: ' . $e->getMessage());
+        $jsonld = [];
+    }
+
+    if (empty($jsonld) || !is_array($jsonld)) {
+        $jsonld = [
+            '@context' => 'https://schema.org',
+            '@type'    => 'WebPage',
+            'name'     => (string)($row['title'] ?? ''),
+        ];
+    }
+
+    return json_encode(
+        $jsonld,
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
+    ) ?: '{}';
+}
+
 
     private function fetchExistingSnippetJson(int $pid): string
     {
@@ -1263,7 +1315,74 @@ private function evaluatePages(array $pages): array
         return null;
     }
 
-    private function dbg(string $tag, array $data = []): void
+            private function baseCss(): string
+{
+    return '<style>
+    /* Layout only – KEIN Scroll-Management hier */
+
+    .rs-wrap{
+        padding:20px;
+        font:14px/1.5 system-ui, Segoe UI, Roboto, Arial;
+        box-sizing:border-box;
+        max-width: 100%;
+        min-height: 0;
+        overflow: auto;
+    }
+
+    .rs-summary{
+        margin:12px 0;
+        padding:10px;
+        border:1px solid #e2e2e2;
+        border-radius:8px;
+        background:#fafafa
+    }
+
+    .rs-table{
+        width:100%;
+        border-collapse:collapse;
+        table-layout:fixed
+    }
+
+    .rs-table th,
+    .rs-table td{
+        padding:6px;
+        border-bottom:1px solid #ddd;
+        vertical-align:top
+    }
+
+    .rs-pre{
+        white-space:pre-wrap;
+        word-break:break-word;
+        background:#f7f7f7;
+        padding:8px;
+        border:1px solid #eee;
+        border-radius:6px;
+        max-height:260px;
+        overflow:auto
+    }
+
+    .rs-col-pid{width:70px}
+    .rs-col-path{width:28%}
+    .rs-col-actions{width:200px}
+
+    .rs-actions form{display:inline}
+    .rs-actions .btn{
+        display:block;
+        margin-bottom:8px;
+        width:100%
+    }
+
+    .rs-group{
+        background:#f0f4ff;
+        border-top:2px solid #cfe0ff;
+        border-bottom:1px solid #cfe0ff;
+        padding:6px 8px;
+        font-weight:600
+    }
+    </style>';
+}
+
+        private function dbg(string $tag, array $data = []): void
     {
         try {
             $dir = '/tmp/site_richsnippets';
@@ -1281,4 +1400,41 @@ private function evaluatePages(array $pages): array
             // Nie das Backend crashen
         }
     }
+
+private function html(string $bodyHtml): ResponseInterface
+{
+    $full = '<!doctype html><html><head><meta charset="utf-8">'
+          . $this->baseCss()
+          . $this->scrollFixCss()
+          . $this->scrollFixJs()
+          . '</head><body>'
+          . '<div class="rs-wrap">' . $bodyHtml . '</div>'
+          . '</body></html>';
+
+    return new HtmlResponse($full);
 }
+
+private function scrollFixCss(): string
+{
+    return '<style>
+        html, body { height: 100%; overflow: auto; }
+        body { margin: 0; }
+        .rs-wrap { min-height: 100%; overflow: auto; }
+    </style>';
+}
+
+private function scrollFixJs(): string
+{
+    return '<script>
+        (function(){
+            try {
+                document.documentElement.style.height = "100%";
+                document.body.style.height = "100%";
+                document.documentElement.style.overflow = "auto";
+                document.body.style.overflow = "auto";
+            } catch(e) {}
+        })();
+    </script>';
+}
+}
+

@@ -3,30 +3,41 @@ declare(strict_types=1);
 
 namespace MyVendor\SiteRichSnippets\Service;
 
-final class JsonLdRenderer
-{
-    public function render(array $jsonLd): string
+    final class JsonLdRenderer
+    {
+        public function render(array $jsonLd): string
     {
         if ($jsonLd === []) {
             return '';
         }
 
-        // HTML/Entities aus relevanten Feldern entfernen
         $jsonLd = $this->sanitizeJsonLd($jsonLd);
 
         $json = json_encode($jsonLd, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
         if (!is_string($json)) {
             return '';
         }
+
         return '<script type="application/ld+json">' . $json . '</script>';
     }
 
-    /**
-     * Entfernt HTML aus bekannten Textfeldern.
-     * - Belässt @-Felder (z. B. @type, @context) unverändert
-     * - Reinigt: description, text, acceptedAnswer.text, HowToStep.text
-     */
     private function sanitizeJsonLd(array $data): array
+    {
+        // @graph-Fall: alle Items sanitizen
+        if (!empty($data['@graph']) && is_array($data['@graph'])) {
+            foreach ($data['@graph'] as $i => $item) {
+                if (is_array($item)) {
+                    $data['@graph'][$i] = $this->sanitizeSingleItem($item);
+                }
+            }
+            return $data;
+        }
+
+        // Single-Item-Fall
+        return $this->sanitizeSingleItem($data);
+    }
+
+    private function sanitizeSingleItem(array $data): array
     {
         // FAQ: mainEntity[*].acceptedAnswer.text
         if (($data['@type'] ?? '') === 'FAQPage' && !empty($data['mainEntity']) && is_array($data['mainEntity'])) {
@@ -48,7 +59,6 @@ final class JsonLdRenderer
             }
         }
 
-        // Generisch: description/text auf Root-Ebene (z. B. Article, Product, JobPosting)
         foreach (['description', 'text'] as $field) {
             if (isset($data[$field]) && is_string($data[$field])) {
                 $data[$field] = $this->cleanText($data[$field]);
@@ -56,14 +66,5 @@ final class JsonLdRenderer
         }
 
         return $data;
-    }
-
-    private function cleanText(string $html): string
-    {
-        $text = strip_tags($html);
-        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        // Mehrfache Whitespaces zu einem Space
-        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
-        return trim($text);
     }
 }
