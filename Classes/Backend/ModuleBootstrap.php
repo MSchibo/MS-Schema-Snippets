@@ -325,6 +325,10 @@ final class ModuleBootstrap
                     foreach ($pages as $pRow) {
                         $pid = (int)$pRow['uid'];
 
+                         if (!$queueService->pageHasEnabledItems($pid)) {
+                        continue; // keine aktiven Items -> diese Seite nicht scannen
+                        }
+
                         $data = $analyzer->analyzePageContents($pid);
                         if (method_exists($analyzer, 'enrichHints')) {
                             $data = $analyzer->enrichHints($data);

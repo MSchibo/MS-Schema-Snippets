@@ -203,4 +203,25 @@ final class QueueService
 
         return (int)$qb->executeStatement();
     }
+
+    public function pageHasenabledItems(int $pid): bool 
+    {
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getQueryBuilderforTable('tx_siterichsnippets_item');
+
+        $qb->getRestrictions()->removeAll();
+
+        $count = (int)$qb
+            ->cound('uid')
+            ->from('tx_siterichsnippets_item')
+            ->where(
+                $qb->expr()->eq('pid', $qb->createNamedParameter($pid, ParameterType::INTEGER)),
+                $qb->expr()->eq('deleted', 0),
+                $qb->expr()->eq('hidden', 0)
+            )
+            ->executeQuery()
+            ->fetchOne();
+
+            return $count > 0;
+    }
 }

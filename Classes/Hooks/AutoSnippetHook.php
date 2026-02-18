@@ -10,7 +10,7 @@ use MyVendor\SiteRichSnippets\Service\QueueService;
 use MyVendor\SiteRichSnippets\Snippet\SnippetService;
 
 final class AutoSnippetHook
-{
+{    
     /**
      * Wird nach allen Datamap-Operationen aufgerufen.
      */
@@ -68,6 +68,10 @@ final class AutoSnippetHook
         $snippetService = GeneralUtility::makeInstance(SnippetService::class);
 
         foreach (array_keys($affectedPids) as $pid) {
+
+                if (!$this->queueService->pageHasEnabledItems($pageId)) {
+                    continue;
+                }
             try {
                 $pageRow = $dataHandler->recordInfo('pages', (int)$pid, '*');
                 if (!$pageRow) {

@@ -11,3 +11,29 @@ CREATE TABLE tx_siters_queue (
   updated_at INT DEFAULT 0 NOT NULL,
   last_error TEXT
 ) ENGINE=InnoDB;
+
+CREATE TABLE tx_siterichsnippets_item (
+  uid int(11) NOT NULL AUTO_INCREMENT,
+  pid int(11) DEFAULT '0' NOT NULL,
+
+  tstamp int(11) DEFAULT '0' NOT NULL,
+  crdate int(11) DEFAULT '0' NOT NULL,
+  cruser_id int(11) DEFAULT '0' NOT NULL,
+  deleted tinyint(4) DEFAULT '0' NOT NULL,
+  hidden tinyint(4) DEFAULT '0' NOT NULL,
+  sorting int(11) DEFAULT '0' NOT NULL,
+
+  type varchar(64) DEFAULT '' NOT NULL,
+  variant varchar(64) DEFAULT '' NOT NULL,
+
+  config mediumtext,
+  data mediumtext,
+
+  hash char(40) DEFAULT '' NOT NULL,
+
+  PRIMARY KEY (uid),
+  KEY parent (pid),
+  KEY type (type),
+  KEY hidden (hidden),
+  KEY hash (hash)
+) ENGINE=InnoDB;
