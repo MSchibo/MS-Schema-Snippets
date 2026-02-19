@@ -182,6 +182,20 @@ final class ModuleBootstrap
             }
 
             $pid  = (int)$q['pid'];
+
+            /** @var \MyVendor\SiteRichSnippets\Service\QueueService $qs */
+$qs = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Service\QueueService::class);
+if (!$qs->pageHasEnabledItems($pid)) {
+    return new RedirectResponse(
+        $this->moduleUrl([
+            'id'   => $pid,
+            'scan' => (string)($q['scan'] ?? 'site'),
+            'msg'  => 'Für diese Seite ist der Snippet-Scan deaktiviert (kein aktiver Item-Record auf der Seite oder im Parent).',
+        ]),
+        303
+    );
+}
+
             $json = $this->buildSuggestionJsonForPid($pid);
 
             $this->dbg('insert_called', [
@@ -326,7 +340,7 @@ final class ModuleBootstrap
                         $pid = (int)$pRow['uid'];
 
                          if (!$queueService->pageHasEnabledItems($pid)) {
-                        continue; // keine aktiven Items -> diese Seite nicht scannen
+                        continue; 
                         }
 
                         $data = $analyzer->analyzePageContents($pid);
@@ -910,17 +924,26 @@ private function evaluatePages(array $pages): array
         return $out;
     }
 
+    /** @var \MyVendor\SiteRichSnippets\Service\QueueService $qs */
+    $qs = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Service\QueueService::class);
+
     foreach ($pages as $p) {
-        $this->stats['scanned']++;
+    $this->stats['scanned']++;
 
-        $pid = (int)($p['uid'] ?? 0);
-        if ($pid <= 0) {
-            $this->dbg('skip_page_invalid_pid', ['row' => $p]);
-            continue;
-        }
+    $pid = (int)($p['uid'] ?? 0);
+    if ($pid <= 0) {
+        $this->dbg('skip_page_invalid_pid', ['row' => $p]);
+        continue;
+    }
 
-        // echte PageRow bevorzugen
-        $pageRow = $this->getPageRow($pid) ?? $p;
+    // ✅ Gate: ohne aktive Items KEIN Scan / keine Anzeige
+    if (!$qs->pageHasEnabledItems($pid)) {
+        continue;
+    }
+
+    // echte PageRow bevorzugen
+    $pageRow = $this->getPageRow($pid) ?? $p;
+
 
         $title = (string)($pageRow['title'] ?? '');
         $path  = $this->buildPath($pid);
@@ -1115,6 +1138,13 @@ private function evaluatePages(array $pages): array
     if (!$row) {
         return '{}';
     }
+
+    /** @var \MyVendor\SiteRichSnippets\Service\QueueService $qs */
+$qs = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Service\QueueService::class);
+if (!$qs->pageHasEnabledItems($pid)) {
+    return '{}';
+}
+
 
     /** @var ContentAnalyzer $analyzer */
     $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);

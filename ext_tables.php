@@ -6,6 +6,12 @@ use TYPO3\CMS\Core\Information\Typo3Version;
 use TYPO3\CMS\Extbase\Utility\ExtensionUtility;
 use MyVendor\SiteRichSnippets\Controller\LegacyModuleController;
 
+ExtensionManagementUtility::addToInsertRecords('tx_siterichsnippets_item');
+
+if (method_exists(ExtensionManagementUtility::class, 'allowTableOnStandardPages')) {
+    ExtensionManagementUtility::allowTableOnStandardPages('tx_siterichsnippets_item');
+}
+
 $major = (new Typo3Version())->getMajorVersion();
 
 if ($major <= 11) {

@@ -10,15 +10,11 @@ use MyVendor\SiteRichSnippets\Service\QueueService;
 use MyVendor\SiteRichSnippets\Snippet\SnippetService;
 
 final class AutoSnippetHook
-{    
-    /**
-     * Wird nach allen Datamap-Operationen aufgerufen.
-     */
+{
     public function processDatamap_afterAllOperations(DataHandler $dataHandler): void
     {
         $affectedPids = [];
 
-        // datamap: [tableName => [uid => fieldArray]]
         foreach (($dataHandler->datamap ?? []) as $table => $records) {
             if ($table !== 'pages' && $table !== 'tt_content') {
                 continue;
@@ -27,7 +23,6 @@ final class AutoSnippetHook
             foreach ($records as $uid => $_) {
                 $pid = 0;
 
-                // Neue Datensätze (NEW...)
                 if (is_string($uid) && str_starts_with($uid, 'NEW')) {
                     $finalUid = (int)($dataHandler->substNEWwithIDs[$uid] ?? 0);
                     if ($finalUid > 0) {
@@ -60,18 +55,17 @@ final class AutoSnippetHook
 
         /** @var QueueService $queueDb */
         $queueDb = GeneralUtility::makeInstance(QueueService::class);
-
         /** @var ContentAnalyzer $an */
         $an = GeneralUtility::makeInstance(ContentAnalyzer::class);
-
         /** @var SnippetService $snippetService */
         $snippetService = GeneralUtility::makeInstance(SnippetService::class);
 
         foreach (array_keys($affectedPids) as $pid) {
+            // ✅ WICHTIG: Wenn keine aktiven Items vorhanden -> GAR NICHT scannen
+            if (!$queueDb->pageHasEnabledItems((int)$pid)) {
+                continue;
+            }
 
-                if (!$this->queueService->pageHasEnabledItems($pageId)) {
-                    continue;
-                }
             try {
                 $pageRow = $dataHandler->recordInfo('pages', (int)$pid, '*');
                 if (!$pageRow) {
@@ -83,7 +77,6 @@ final class AutoSnippetHook
                     $data = $an->enrichHints($data);
                 }
 
-                // NEU: zentraler Generator
                 $jsonld = $snippetService->composeGraphForPage($pageRow, $data);
                 if (empty($jsonld) || !is_array($jsonld)) {
                     continue;
@@ -96,7 +89,6 @@ final class AutoSnippetHook
 
                 $hash = sha1($json);
 
-                // DB-Queue (einheitlich für TYPO3 11–13)
                 $queueDb->addOrUpdate((int)$pid, 'auto', $json, $hash, 'autoHook');
             } catch (\Throwable $e) {
                 // Backend darf nie crashen

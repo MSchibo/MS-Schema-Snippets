@@ -23,6 +23,8 @@ CREATE TABLE tx_siterichsnippets_item (
   hidden tinyint(4) DEFAULT '0' NOT NULL,
   sorting int(11) DEFAULT '0' NOT NULL,
 
+  active tinyint(1) DEFAULT '1' NOT NULL,
+
   type varchar(64) DEFAULT '' NOT NULL,
   variant varchar(64) DEFAULT '' NOT NULL,
 
@@ -34,6 +36,8 @@ CREATE TABLE tx_siterichsnippets_item (
   PRIMARY KEY (uid),
   KEY parent (pid),
   KEY type (type),
+  KEY active (active),
   KEY hidden (hidden),
+  KEY deleted (deleted),
   KEY hash (hash)
 ) ENGINE=InnoDB;

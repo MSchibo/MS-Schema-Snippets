@@ -1,8 +1,11 @@
 <?php
 declare(strict_types=1);
 
-return [
-    'ctrl' => [
+use TYPO3\CMS\Core\Information\Typo3Version;
+
+$major = (new Typo3Version())->getMajorVersion();
+
+$ctrl = [
     'title' => 'LLL:EXT:site_richsnippets/Resources/Private/Language/locallang_db.xlf:tx_siterichsnippets_item',
     'label' => 'type',
     'label_alt' => 'variant',
@@ -17,23 +20,28 @@ return [
         'disabled' => 'hidden',
     ],
 
-    'security' => [
-        'ignorePageTypeRestriction' => true,
-    ],
-
     'rootLevel' => 0,
     'hideTable' => false,
 
     'sortby' => 'sorting',
     'searchFields' => 'type,variant,hash,config,data',
     'iconfile' => 'EXT:site_richsnippets/Resources/Public/Icons/Extension.svg',
-],
+];
 
+// nur ab v12 setzen (T11 kann sonst zicken)
+if ($major >= 12) {
+    $ctrl['security'] = [
+        'ignorePageTypeRestriction' => true,
+    ];
+}
+
+return [
+    'ctrl' => $ctrl,
 
     'types' => [
         '1' => [
             'showitem' =>
-                'hidden, type, variant, hash,'
+                'hidden, active, type, variant, hash,'
                 . '--div--;Konfiguration, config,'
                 . '--div--;Daten, data,'
                 . '--div--;Meta, pid, crdate, tstamp',
@@ -42,19 +50,33 @@ return [
 
     'columns' => [
         'pid' => [
-            'config' => [
-                'type' => 'passthrough',
-            ],
+            'config' => ['type' => 'passthrough'],
         ],
 
         'hidden' => [
+            'exclude' => true,
             'label' => 'LLL:EXT:core/Resources/Private/Language/locallang_general.xlf:LGL.disable',
             'config' => [
                 'type' => 'check',
                 'renderType' => 'checkboxToggle',
                 'items' => [
-                    ['label' => '', 'value' => 1],
+                    ['', 1],
                 ],
+                'default' => 0,
+            ],
+        ],
+
+        'active' => [
+            'exclude' => true,
+            'label' => 'Snippets aktiv (Scan erlaubt)',
+            'description' => 'Wenn deaktiviert, wird auf dieser Seite (und ggf. vererbend auf Unterseiten) kein Scan/AutoHook/Queue ausgeführt.',
+            'config' => [
+                'type' => 'check',
+                'renderType' => 'checkboxToggle',
+                'items' => [
+                    ['', 1],
+                ],
+                'default' => 1,
             ],
         ],
 
@@ -92,7 +114,7 @@ return [
 
         'hash' => [
             'label' => 'Hash',
-            'description' => 'Content-Hash (z.B. sha1) zur Erkennung von Änderungen.',
+            'description' => 'Optional: Content-Hash zur Erkennung von Änderungen.',
             'config' => [
                 'type' => 'input',
                 'size' => 40,
@@ -103,6 +125,7 @@ return [
 
         'config' => [
             'label' => 'Konfiguration (JSON)',
+            'description' => 'Typ-spezifische Konfiguration (z.B. Feldauswahl, Mapping, Regeln).',
             'config' => [
                 'type' => 'text',
                 'rows' => 12,
@@ -113,6 +136,7 @@ return [
 
         'data' => [
             'label' => 'Daten (JSON)',
+            'description' => 'Optional: vorberechnete Daten / Overrides pro Seite.',
             'config' => [
                 'type' => 'text',
                 'rows' => 18,

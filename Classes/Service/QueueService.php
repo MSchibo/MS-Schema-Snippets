@@ -204,24 +204,60 @@ final class QueueService
         return (int)$qb->executeStatement();
     }
 
-    public function pageHasenabledItems(int $pid): bool 
+    public function pageHasEnabledItems(int $pid): bool
     {
+        $pidChain = $this->buildPidChainToRoot($pid);
+
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)
-            ->getQueryBuilderforTable('tx_siterichsnippets_item');
+            ->getQueryBuilderForTable('tx_siterichsnippets_item');
 
         $qb->getRestrictions()->removeAll();
 
         $count = (int)$qb
-            ->cound('uid')
+            ->count('uid')
             ->from('tx_siterichsnippets_item')
             ->where(
-                $qb->expr()->eq('pid', $qb->createNamedParameter($pid, ParameterType::INTEGER)),
-                $qb->expr()->eq('deleted', 0),
-                $qb->expr()->eq('hidden', 0)
+                $qb->expr()->in(
+                    'pid',
+                    $qb->createNamedParameter($pidChain, Connection::PARAM_INT_ARRAY)
+                ),
+                $qb->expr()->eq('deleted', $qb->createNamedParameter(0, ParameterType::INTEGER)),
+                $qb->expr()->eq('hidden', $qb->createNamedParameter(0, ParameterType::INTEGER)),
+                $qb->expr()->eq('active', $qb->createNamedParameter(1, ParameterType::INTEGER))
             )
             ->executeQuery()
             ->fetchOne();
 
-            return $count > 0;
+        return $count > 0;
+    }
+
+    private function buildPidChainToRoot(int $pid): array
+    {
+        $chain = [];
+        $current = $pid;
+
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getQueryBuilderForTable('pages');
+        $qb->getRestrictions()->removeAll();
+
+        while ($current > 0 && !in_array($current, $chain, true)) {
+            $chain[] = $current;
+
+            $parent = $qb->select('pid')
+                ->from('pages')
+                ->where(
+                    $qb->expr()->eq(
+                        'uid',
+                        $qb->createNamedParameter($current, ParameterType::INTEGER)
+                    )
+                )
+                ->setMaxResults(1)
+                ->executeQuery()
+                ->fetchOne();
+
+            $current = (int)$parent;
+        }
+
+        return $chain;
     }
 }
