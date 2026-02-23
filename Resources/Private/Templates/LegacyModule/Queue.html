@@ -13,6 +13,22 @@
                 ← Zurück zum Scanner
             </f:link.action>
 
+            <f:form action="queueScanCurrentPage" controller="LegacyModule"
+                    style="display:inline-block; margin-left:8px">
+                <f:form.hidden name="pageId" value="{pageId}" />
+                <button type="submit" class="btn">
+                    Seite scannen &amp; in Queue legen
+                </button>
+            </f:form>
+
+            <f:form action="queueScanWholeSite" controller="LegacyModule"
+                    style="display:inline-block; margin-left:8px">
+                <f:form.hidden name="rootPageId" value="{pageId}" />
+                <button type="submit" class="btn">
+                    Jetzt komplette Site scannen &amp; in Queue legen
+                </button>
+            </f:form>
+
             <f:form action="processApproved" controller="LegacyModule"
                     style="display:inline-block; margin-left:8px">
                 <button type="submit" class="btn btn-primary">

@@ -5,46 +5,88 @@
 
     <h1>MS Schema Snippets – Scanner</h1>
 
-    <div class="section-box">
-        <p>
-            Aktuelle Seite (Pagetree): <strong>PID {pageId}</strong>
-        </p>
+    <p>
+        <strong>Aktuelle Seite (Pagetree): PID {pageId}</strong>
+    </p>
 
-        <p>
-            <f:form action="scanCurrentPage" controller="LegacyModule">
-                <f:form.hidden name="pageId" value="{pageId}" />
-                <button type="submit" class="btn btn-primary">
-                    Aktuelle Seite scannen ➜ Queue (pending)
-                </button>
-            </f:form>
-        </p>
+    <p>
+        <f:link.action action="scanner" controller="LegacyModule"
+                       arguments="{id: pageId, scan: 'current'}">
+            Scan current page
+        </f:link.action>
+        &nbsp;|&nbsp;
+        <f:link.action action="scanner" controller="LegacyModule"
+                       arguments="{id: pageId, scan: 'site'}">
+            Scan whole site
+        </f:link.action>
+        <br />
+        <f:link.action action="queue" controller="LegacyModule" class="btn">
+            Queue öffnen
+        </f:link.action>
+    </p>
 
-        <p>
-            <f:form action="scanWholeSite" controller="LegacyModule">
-                <f:form.hidden name="rootPageId" value="{pageId}" />
-                <button type="submit" class="btn">
-                    Komplette Site ab dieser Seite scannen ➜ Queue (pending)
-                </button>
-            </f:form>
-        </p>
+    <f:if condition="{scan}">
+        <div class="section-box" style="margin-top:16px;">
+            <h2>Ergebnis</h2>
+            <p>
+                Gescannt: <strong>{scanned}</strong>
+                &nbsp;|&nbsp;
+                Vorschläge: <strong>{suggested}</strong>
+            </p>
 
-        <p>
-            <f:link.action action="queue" controller="LegacyModule" class="btn">
-                Queue öffnen
-            </f:link.action>
-        </p>
-    </div>
+            <f:if condition="{items -> f:count()}">
+                <f:then>
+                    <table class="list">
+                        <tr>
+                            <th>PID</th>
+                            <th>Pfad / Seite</th>
+                            <th>JSON-LD Vorschlag</th>
+                            <th>Aktionen</th>
+                        </tr>
 
-    <div class="section-box">
+                        <f:for each="{items}" as="it">
+                            <tr>
+                                <td>{it.pid}</td>
+                                <td>{it.path}</td>
+                                <td>
+                                    <pre style="max-height:220px; overflow:auto; background:#f6f6f6; padding:10px; border-radius:6px;">
+{it.json}
+                                    </pre>
+                                </td>
+                                <td>
+                                    <f:if condition="{it.hasExisting}">
+                                        <f:then>✓ Snippet vorhanden</f:then>
+                                        <f:else>– kein Snippet</f:else>
+                                    </f:if>
+                                    <br />
+
+                                    <f:link.action action="insert"
+                                                   controller="LegacyModule"
+                                                   arguments="{pid: it.pid}"
+                                                   class="btn btn-small">
+                                        Snippet aktualisieren
+                                    </f:link.action>
+                                </td>
+                            </tr>
+                        </f:for>
+                    </table>
+                </f:then>
+                <f:else>
+                    <p>Keine Vorschläge gefunden (oder Scan deaktiviert).</p>
+                </f:else>
+            </f:if>
+        </div>
+    </f:if>
+
+    <div class="section-box" style="margin-top:20px;">
         <h2>Snippets direkt prüfen &amp; übernehmen</h2>
         <p>Gib eine kommaseparierte Liste von Seiten-IDs ein, um für diese Seiten Alt/Neu-Snippets zu vergleichen.</p>
 
         <f:form action="review" controller="LegacyModule" method="post">
-    <label for="pids">Seiten-IDs (z.B. 10,20,30):</label><br />
-    <f:form.textfield name="pidsRaw" id="pids" style="width:280px" value="{pidsRaw}" /><br /><br />
-    <button type="submit" class="btn">Prüfansicht öffnen</button>
-</f:form>
-
+            <label for="pids">Seiten-IDs (z.B. 10,20,30):</label><br />
+            <f:form.textfield name="pidsRaw" id="pids" style="width:280px" value="{pidsRaw}" /><br /><br />
+            <button type="submit" class="btn">Prüfansicht öffnen</button>
+        </f:form>
     </div>
 
 </f:section>

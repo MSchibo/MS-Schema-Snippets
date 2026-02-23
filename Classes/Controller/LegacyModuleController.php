@@ -37,9 +37,12 @@ final class LegacyModuleController extends ActionController
     // -------------------------------------------------
     protected function getCurrentPageId(): int
 {
-    $id = (int)($this->request->getQueryParams()['id'] ?? 0);
-    if ($id > 0) {
-        return $id;
+    // TYPO3 11: Argumente über Extbase Request
+    if (method_exists($this->request, 'hasArgument') && $this->request->hasArgument('id')) {
+        $id = (int)$this->request->getArgument('id');
+        if ($id > 0) {
+            return $id;
+        }
     }
 
     // Fallback: Site Root (statt hart 1)
@@ -126,74 +129,140 @@ final class LegacyModuleController extends ActionController
     // Scanner-Ansicht (Start des Moduls)
     // -------------------------------------------------
     public function scannerAction(): void
-    {
-        $currentPageId = $this->getCurrentPageId();
+{
+    $currentPageId = $this->getCurrentPageId();
 
-        $this->view->assignMultiple([
-            'pageId' => $currentPageId,
-        ]);
+    $scan = '';
+    if (method_exists($this->request, 'hasArgument') && $this->request->hasArgument('scan')) {
+        $scan = (string)$this->request->getArgument('scan');
     }
 
+    $items = [];
+    $scanned = 0;
+
+    if ($scan === 'current') {
+        $pages = [['uid' => $currentPageId]];
+        $items = $this->evaluatePages($pages);
+        $scanned = 1;
+    } elseif ($scan === 'site') {
+        $pages = $this->pageTreeScanner->fetchAllPages($currentPageId);
+        $scanned = count($pages);
+        $items = $this->evaluatePages($pages);
+    }
+
+    $this->view->assignMultiple([
+        'pageId'    => $currentPageId,
+        'scan'      => $scan,
+        'items'     => $items,
+        'scanned'   => $scanned,
+        'suggested' => count($items),
+    ]);
+}
+
+public function insertAction(int $pid): void
+{
+    if ($pid <= 0) {
+        $this->addFlashMessage('Ungültige PID.');
+        $this->redirect('scanner');
+        return;
+    }
+
+    // ✅ Gate: Wenn Scan für Seite deaktiviert → nix einfügen
+    if (!$this->pageHasEnabledItemsGate($pid)) {
+        $this->addFlashMessage('Für diese Seite ist der Snippet-Scan deaktiviert (kein aktiver Item-Record auf der Seite oder im Parent).');
+        $this->redirect('scanner', null, null, ['id' => $this->getCurrentPageId()]);
+        return;
+    }
+
+    $json = $this->buildSuggestionJsonForPid($pid);
+    if ($json === '' || trim($json) === '{}' ) {
+        $this->addFlashMessage('Kein valides Snippet erzeugt.');
+        $this->redirect('scanner', null, null, ['id' => $this->getCurrentPageId()]);
+        return;
+    }
+
+    /** @var SnippetInserter $inserter */
+    $inserter = GeneralUtility::makeInstance(SnippetInserter::class);
+    $inserter->upsert($pid, $json, null);
+
+    $this->addFlashMessage('Snippet aktualisiert (in Seite eingefügt).');
+    $this->redirect('scanner', null, null, ['id' => $this->getCurrentPageId()]);
+}
+
     // Aktuelle Seite scannen → Vorschlag in Queue (pending)
-    public function scanCurrentPageAction(int $pageId = 0): void
-    {
-        if ($pageId <= 0) {
-            $pageId = $this->getCurrentPageId();
+    public function queueScanCurrentPageAction(int $pageId = 0): void
+{
+    if ($pageId <= 0) {
+        $pageId = $this->getCurrentPageId();
+    }
+
+    // ✅ Gate
+    if (!$this->pageHasEnabledItemsGate($pageId)) {
+        $this->addFlashMessage('Für diese Seite ist der Snippet-Scan deaktiviert.');
+        $this->redirect('queue');
+        return;
+    }
+
+    $json = $this->buildSuggestionJsonForPid($pageId);
+    $hash = sha1($json);
+
+    $this->queueService->addOrUpdate(
+        $pageId,
+        'semi',
+        $json,
+        $hash,
+        'manualScanCurrent'
+    );
+
+    $this->addFlashMessage('Aktuelle Seite gescannt – Eintrag in Queue (pending) gelegt.');
+    $this->redirect('queue');
+}
+
+public function queueScanWholeSiteAction(int $rootPageId = 0): void
+{
+    if ($rootPageId <= 0) {
+        $rootPageId = $this->getCurrentPageId();
+    }
+
+    $pages = $this->pageTreeScanner->fetchAllPages($rootPageId);
+
+    $count = 0;
+    foreach ($pages as $page) {
+        $pid = (int)($page['uid'] ?? 0);
+        if ($pid <= 0) {
+            continue;
         }
 
-        $json = $this->buildSuggestionJsonForPid($pageId);
+        // ✅ Gate pro Seite
+        if (!$this->pageHasEnabledItemsGate($pid)) {
+            continue;
+        }
+
+        $json = $this->buildSuggestionJsonForPid($pid);
         $hash = sha1($json);
 
         $this->queueService->addOrUpdate(
-            $pageId,
+            $pid,
             'semi',
             $json,
             $hash,
-            'manualScanCurrent'
+            'manualScanSite'
         );
 
-        $this->addFlashMessage('Aktuelle Seite gescannt – Eintrag in Queue (pending) gelegt.');
-        $this->redirect('queue');
+        $count++;
     }
 
-    // Ganze Site (ab aktueller Seite/Siteroot) scannen → alles in Queue (pending)
-    public function scanWholeSiteAction(int $rootPageId = 0): void
-    {
-        if ($rootPageId <= 0) {
-            $rootPageId = $this->getCurrentPageId();
-        }
-
-        $pages = $this->pageTreeScanner->fetchAllPages($rootPageId);
-        $count = 0;
-
-        foreach ($pages as $page) {
-            $pid = (int)($page['uid'] ?? 0);
-            if ($pid <= 0) {
-                continue;
-            }
-
-            $json = $this->buildSuggestionJsonForPid($pid);
-            $hash = sha1($json);
-
-            $this->queueService->addOrUpdate(
-                $pid,
-                'semi',
-                $json,
-                $hash,
-                'manualScanSite'
-            );
-            $count++;
-        }
-
-        $this->addFlashMessage($count . ' Seiten gescannt – Einträge in Queue (pending) gelegt.');
-        $this->redirect('queue');
-    }
+    $this->addFlashMessage($count . ' Seiten gescannt – Einträge in Queue (pending) gelegt.');
+    $this->redirect('queue');
+}
 
     // -------------------------------------------------
     // Queue-Ansicht (alle Statusgruppen)
     // -------------------------------------------------
     public function queueAction(): void
     {
+        $currentPageId = $this->getCurrentPageId();
+
         $pending  = $this->queueService->list('pending');
         $approved = $this->queueService->list('approved');
         $rejected = $this->queueService->list('rejected');
@@ -465,4 +534,90 @@ $this->addFlashMessage($msg);
         }
         return '';
     }
+
+    protected function buildPath(int $pid): string
+{
+    // Für TYPO3 11 simpel halten (ohne Rootline API): nur Titel, sonst Fallback
+    $row = $this->getPageRow($pid);
+    if (!$row) {
+        return (string)$pid;
+    }
+    return (string)($row['title'] ?? (string)$pid);
+}
+
+protected function pageHasEnabledItemsGate(int $pid): bool
+{
+    // Gate nur anwenden, wenn Methode existiert (bei dir ist sie ja da)
+    if ($this->queueService && method_exists($this->queueService, 'pageHasEnabledItems')) {
+        return (bool)$this->queueService->pageHasEnabledItems($pid);
+    }
+    // Wenn Methode nicht existiert: nicht blocken
+    return true;
+}
+
+protected function evaluatePages(array $pages): array
+{
+    /** @var ContentAnalyzer $analyzer */
+    $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
+
+    /** @var SnippetService $snippetService */
+    $snippetService = GeneralUtility::makeInstance(SnippetService::class);
+
+    $out = [];
+
+    foreach ($pages as $p) {
+        $pid = (int)($p['uid'] ?? 0);
+        if ($pid <= 0) {
+            continue;
+        }
+
+        // ✅ Gate: ohne aktive Items KEIN Scan-Ergebnis anzeigen
+        if (!$this->pageHasEnabledItemsGate($pid)) {
+            continue;
+        }
+
+        $row = $this->getPageRow($pid);
+        if (!$row) {
+            continue;
+        }
+
+        $data = [];
+        try {
+            $data = $analyzer->analyzePageContents($pid);
+            if (method_exists($analyzer, 'enrichHints')) {
+                $data = $analyzer->enrichHints($data);
+            }
+        } catch (\Throwable $e) {
+            $data = [];
+        }
+
+        $jsonld = [];
+        try {
+            $jsonld = $snippetService->composeGraphForPage($row, $data);
+        } catch (\Throwable $e) {
+            $jsonld = [];
+        }
+
+        if (empty($jsonld) || !is_array($jsonld)) {
+            $jsonld = [
+                '@context' => 'https://schema.org',
+                '@type'    => 'WebPage',
+                'name'     => (string)($row['title'] ?? ''),
+            ];
+        }
+
+        $json = json_encode($jsonld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '{}';
+        $existing = $this->fetchExistingSnippetJson($pid);
+
+        $out[] = [
+            'pid'         => $pid,
+            'title'       => (string)($row['title'] ?? ''),
+            'path'        => $this->buildPath($pid),
+            'json'        => $json,
+            'hasExisting' => (trim($existing) !== ''),
+        ];
+    }
+
+    return $out;
+}
 }

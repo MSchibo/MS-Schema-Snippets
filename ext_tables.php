@@ -21,7 +21,7 @@ if ($major <= 11) {
         'siterichsnippets',
         '',
         [
-            LegacyModuleController::class => 'scanner,scanCurrentPage,scanWholeSite,queue,show,approve,reject,review,applySelected,undo,processApproved,purgeRejected',
+            LegacyModuleController::class => 'scanner,insert,queue,show,approve,reject,undo,processApproved,purgeRejected,queueScanCurrentPage,queueScanWholeSite,review,applySelected',
         ],
         [
             'access' => 'user,group',
