@@ -571,10 +571,10 @@ protected function evaluatePages(array $pages): array
             continue;
         }
 
-        // ✅ Gate: ohne aktive Items KEIN Scan-Ergebnis anzeigen
-        if (!$this->pageHasEnabledItemsGate($pid)) {
-            continue;
-        }
+        // Gate in TYPO3 11 nicht schon hier hart anwenden
+// if (!$this->pageHasEnabledItemsGate($pid)) {
+//     continue;
+// }
 
         $row = $this->getPageRow($pid);
         if (!$row) {

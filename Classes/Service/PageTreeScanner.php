@@ -22,9 +22,13 @@ final class PageTreeScanner
             ['uid' => $rootPid]
         )->fetchAssociative();
 
-        if (!$root || (int)$root['deleted'] === 1) {
-            return [];
-        }
+        if (
+    !$root ||
+    (int)$root['deleted'] === 1 ||
+    (int)$root['hidden'] === 1
+) {
+    return [];
+}
 
         $result = [];
         $queue  = [(int)$rootPid];
@@ -41,12 +45,16 @@ final class PageTreeScanner
 
             foreach ($qb->executeQuery()->fetchAllAssociative() as $row) {
                 if ((int)$row['deleted'] === 1) {
-                    continue;
-                }
-                $doktype = (int)$row['doktype'];
-                if ($doktype >= 200) {
-                    continue; // Sysfolder usw.
-                }
+    continue;
+}
+if ((int)$row['hidden'] === 1) {
+    continue;
+}
+
+$doktype = (int)$row['doktype'];
+if ($doktype >= 200) {
+    continue; // Sysfolder usw.
+}
 
                 $result[] = [
                     'uid' => (int)$row['uid'],

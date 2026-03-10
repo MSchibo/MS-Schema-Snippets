@@ -2,6 +2,13 @@
 declare(strict_types=1);
 
 use MyVendor\SiteRichSnippets\Backend\ModuleBootstrap;
+use TYPO3\CMS\Core\Information\Typo3Version;
+
+$major = (new Typo3Version())->getMajorVersion();
+
+if ($major <= 11) {
+    return [];
+}
 
 return [
     'web_site_richsnippets' => [

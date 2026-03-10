@@ -9,7 +9,7 @@ final class CourseListSnippetType implements SnippetTypeInterface
 {
     public function getIdentifier(): string
     {
-        return 'courseList';
+        return 'courselist';
     }
 
     public function getLabel(): string
@@ -18,10 +18,10 @@ final class CourseListSnippetType implements SnippetTypeInterface
     }
 
     public function isEnabledForPage(array $pageRow, array $analyzedData, array $settings = []): bool
-    {
-        $courses = $this->extractCourses($analyzedData);
-        return !empty($courses);
-    }
+{
+    $courses = $this->extractCourses($analyzedData);
+    return !empty($courses);
+}
 
 public function build(array $pageRow, array $analyzedData, array $settings = []): array
 {

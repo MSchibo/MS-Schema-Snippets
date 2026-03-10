@@ -13,6 +13,9 @@ CREATE TABLE tx_siters_queue (
 ) ENGINE=InnoDB;
 
 CREATE TABLE tx_siterichsnippets_item (
+
+  enabled_types varchar(255) DEFAULT '' NOT NULL,
+  inherit tinyint(4) DEFAULT '1' NOT NULL,
   uid int(11) NOT NULL AUTO_INCREMENT,
   pid int(11) DEFAULT '0' NOT NULL,
 

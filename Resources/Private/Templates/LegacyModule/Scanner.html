@@ -34,47 +34,50 @@
                 Vorschläge: <strong>{suggested}</strong>
             </p>
 
-            <f:if condition="{items -> f:count()}">
-                <f:then>
-                    <table class="list">
-                        <tr>
-                            <th>PID</th>
-                            <th>Pfad / Seite</th>
-                            <th>JSON-LD Vorschlag</th>
-                            <th>Aktionen</th>
-                        </tr>
+            <div class="rs-scan-wrap"
+                 style="max-height: calc(100vh - 300px); overflow-y: auto; padding-right: 8px;">
 
-                        <f:for each="{items}" as="it">
+                <f:if condition="{items -> f:count()}">
+                    <f:then>
+                        <table class="list">
                             <tr>
-                                <td>{it.pid}</td>
-                                <td>{it.path}</td>
-                                <td>
-                                    <pre style="max-height:220px; overflow:auto; background:#f6f6f6; padding:10px; border-radius:6px;">
-{it.json}
-                                    </pre>
-                                </td>
-                                <td>
-                                    <f:if condition="{it.hasExisting}">
-                                        <f:then>✓ Snippet vorhanden</f:then>
-                                        <f:else>– kein Snippet</f:else>
-                                    </f:if>
-                                    <br />
-
-                                    <f:link.action action="insert"
-                                                   controller="LegacyModule"
-                                                   arguments="{pid: it.pid}"
-                                                   class="btn btn-small">
-                                        Snippet aktualisieren
-                                    </f:link.action>
-                                </td>
+                                <th>PID</th>
+                                <th>Pfad / Seite</th>
+                                <th>JSON-LD Vorschlag</th>
+                                <th>Aktionen</th>
                             </tr>
-                        </f:for>
-                    </table>
-                </f:then>
-                <f:else>
-                    <p>Keine Vorschläge gefunden (oder Scan deaktiviert).</p>
-                </f:else>
-            </f:if>
+
+                            <f:for each="{items}" as="it">
+                                <tr>
+                                    <td>{it.pid}</td>
+                                    <td>{it.path}</td>
+                                    <td>
+                                        <pre style="max-height:220px; overflow:auto; background:#f6f6f6; padding:10px; border-radius:6px;">{it.json}</pre>
+                                    </td>
+                                    <td>
+                                        <f:if condition="{it.hasExisting}">
+                                            <f:then>✓ Snippet vorhanden</f:then>
+                                            <f:else>– kein Snippet</f:else>
+                                        </f:if>
+                                        <br />
+
+                                        <f:link.action action="insert"
+                                                       controller="LegacyModule"
+                                                       arguments="{pid: it.pid}"
+                                                       class="btn btn-small">
+                                            Snippet aktualisieren
+                                        </f:link.action>
+                                    </td>
+                                </tr>
+                            </f:for>
+                        </table>
+                    </f:then>
+                    <f:else>
+                        <p>Keine Vorschläge gefunden (oder Scan deaktiviert).</p>
+                    </f:else>
+                </f:if>
+
+            </div>
         </div>
     </f:if>
 

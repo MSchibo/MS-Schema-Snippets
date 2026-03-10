@@ -13,9 +13,9 @@ final class SnippetTypeRegistry
      * (später einfach erweitern um weitere Typen)
      */
     private const TYPE_CLASSES = [
-        \MyVendor\SiteRichSnippets\Snippet\Type\FaqSnippetType::class,
-        \MyVendor\SiteRichSnippets\Snippet\Type\CourseListSnippetType::class,
-    ];
+    \MyVendor\SiteRichSnippets\Snippet\Type\CourseListSnippetType::class,
+    \MyVendor\SiteRichSnippets\Snippet\Type\FaqSnippetType::class,
+];
 
     /** @var SnippetTypeInterface[]|null */
     private ?array $instances = null;
@@ -45,26 +45,84 @@ final class SnippetTypeRegistry
      * für diese Seite sinnvoll sind (isEnabledForPage).
      */
     public function getTypesForPage(array $pageRow, array $analyzedData): array
-    {
-        /** @var SettingsService $settingsService */
-        $settingsService = GeneralUtility::makeInstance(SettingsService::class);
+{
+    /** @var SettingsService $settingsService */
+    $settingsService = GeneralUtility::makeInstance(SettingsService::class);
 
-        $enabled = $settingsService->getEnabledTypes(); // z.B. ['faq','courseList'] oder [] = alle
+    // Globale Filterung (Extension-Konfiguration)
+    $enabledGlobal = $settingsService->getEnabledTypes(); // [] = alle
+    $enabledGlobal = $this->normalizeTypeList($enabledGlobal);
 
-        $out = [];
-        foreach ($this->getAllTypes() as $identifier => $type) {
-            // Globale Filterung (Extension-Konfiguration)
-            if ($enabled !== [] && !in_array($identifier, $enabled, true)) {
-                continue;
-            }
+    // Page-spezifische Filterung (tx_siterichsnippets_item inkl. Vererbung)
+    $pid = (int)($pageRow['uid'] ?? 0);
 
-            $typeSettings = $settingsService->getTypeSettings($identifier);
+    /** @var \MyVendor\SiteRichSnippets\Service\QueueService $qs */
+    $qs = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Service\QueueService::class);
 
-            if ($type->isEnabledForPage($pageRow, $analyzedData, $typeSettings)) {
-                $out[] = $type;
-            }
+    $enabledForPage = $this->normalizeTypeList($qs->resolveEnabledTypesForPage($pid));
+
+    // WICHTIG:
+    // Leere Page-Liste bedeutet NICHT mehr "alles blockieren",
+    // sondern "kein zusätzlicher Page-Filter".
+    $usePageFilter = ($enabledForPage !== []);
+
+    $out = [];
+    foreach ($this->getAllTypes() as $identifier => $type) {
+        $identifier = $this->normalizeType((string)$identifier);
+
+        // 1) Global
+        if ($enabledGlobal !== [] && !in_array($identifier, $enabledGlobal, true)) {
+            continue;
         }
 
-        return $out;
+        // 2) Pro Seite nur filtern, wenn wirklich etwas konfiguriert wurde
+        if ($usePageFilter && !in_array($identifier, $enabledForPage, true)) {
+            continue;
+        }
+
+        $typeSettings = $settingsService->getTypeSettings($identifier);
+
+        // 3) Type eigene Heuristik
+        if ($type->isEnabledForPage($pageRow, $analyzedData, $typeSettings)) {
+            $out[] = $type;
+        }
     }
+
+    return $out;
+}
+
+private function normalizeTypeList($list): array
+{
+    // akzeptiert: [] | CSV-string | array
+    if (is_string($list)) {
+        $list = preg_split('/\s*,\s*/', trim($list), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    }
+    if (!is_array($list)) {
+        return [];
+    }
+
+    $out = [];
+    foreach ($list as $v) {
+        $t = $this->normalizeType((string)$v);
+        if ($t !== '') {
+            $out[] = $t;
+        }
+    }
+    return array_values(array_unique($out));
+}
+
+private function normalizeType(string $id): string
+{
+    $id = strtolower(trim($id));
+
+    // Aliase (falls irgendwo camelCase reinläuft)
+    $map = [
+        'course'     => 'courselist',
+        'course_list'=> 'courselist',
+        'courselist' => 'courselist',
+        'faqpage'    => 'faq',
+    ];
+
+    return $map[$id] ?? $id;
+}
 }

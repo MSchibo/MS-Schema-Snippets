@@ -24,6 +24,7 @@ final class SnippetInserter
         $conn = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('tt_content');
         $existingUid = $this->findExistingSnippetUid($pid);
 
+        $json = trim($json);
         $bodytext = '<script type="application/ld+json">' . $json . '</script>';
 
         if ($existingUid) {
@@ -90,51 +91,60 @@ final class SnippetInserter
 
     /** Liefert die uid eines vorhandenen Snippet-Elements */
     public function findExistingSnippetUid(int $pid): ?int
-    {
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
+{
+    $qb = GeneralUtility::makeInstance(ConnectionPool::class)
+        ->getQueryBuilderForTable('tt_content');
+    $qb->getRestrictions()->removeAll(); // 🔥 WICHTIG
 
-        $row = $qb->select('uid')
-            ->from('tt_content')
-            ->where(
-                $qb->expr()->eq('pid', $qb->createNamedParameter($pid, \Doctrine\DBAL\ParameterType::INTEGER)),
-                $qb->expr()->eq('deleted', 0),
-                $qb->expr()->eq('CType', $qb->createNamedParameter('html')),
-                $qb->expr()->eq('header', $qb->createNamedParameter(self::HEADER))
-            )
-            ->orderBy('sorting', 'ASC')
-            ->setMaxResults(1)
-            ->executeQuery()
-            ->fetchAssociative();
+    $row = $qb->select('uid')
+        ->from('tt_content')
+        ->where(
+            $qb->expr()->eq('pid', $qb->createNamedParameter($pid, \Doctrine\DBAL\ParameterType::INTEGER)),
+            $qb->expr()->eq('deleted', 0),
+            $qb->expr()->eq('CType', $qb->createNamedParameter('html')),
+            $qb->expr()->eq('header', $qb->createNamedParameter(self::HEADER))
+        )
+        ->orderBy('sorting', 'ASC')
+        ->setMaxResults(1)
+        ->executeQuery()
+        ->fetchAssociative();
 
-        return $row ? (int)$row['uid'] : null;
-    }
+    return $row ? (int)$row['uid'] : null;
+}
 
     private function nextSortingAtEnd(int $pid): int
-    {
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
-        $max = (int)$qb->selectLiteral('MAX(sorting) AS s')
-            ->from('tt_content')
-            ->where(
-                $qb->expr()->eq('pid', $qb->createNamedParameter($pid, \Doctrine\DBAL\ParameterType::INTEGER)),
-                $qb->expr()->eq('deleted', 0)
-            )
-            ->executeQuery()
-            ->fetchOne();
+{
+    $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
+    $qb->getRestrictions()->removeAll();
 
-        return ($max > 0 ? $max : 0) + 256;
-    }
+    $max = (int)$qb->selectLiteral('MAX(sorting) AS s')
+        ->from('tt_content')
+        ->where(
+            $qb->expr()->eq('pid', $qb->createNamedParameter($pid, \Doctrine\DBAL\ParameterType::INTEGER)),
+            $qb->expr()->eq('deleted', $qb->createNamedParameter(0, \Doctrine\DBAL\ParameterType::INTEGER))
+        )
+        ->executeQuery()
+        ->fetchOne();
+
+    return ($max > 0 ? $max : 0) + 256;
+}
 
     private function sortingAfter(int $afterUid): int
-    {
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
-        $sorting = (int)$qb->select('sorting')
-            ->from('tt_content')
-            ->where($qb->expr()->eq('uid', $qb->createNamedParameter($afterUid, \Doctrine\DBAL\ParameterType::INTEGER)))
-            ->executeQuery()
-            ->fetchOne();
+{
+    $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
+    $qb->getRestrictions()->removeAll();
 
-        return ($sorting > 0 ? $sorting : 0) + 128;
-    }
+    $sorting = (int)$qb->select('sorting')
+        ->from('tt_content')
+        ->where(
+            $qb->expr()->eq('uid', $qb->createNamedParameter($afterUid, \Doctrine\DBAL\ParameterType::INTEGER))
+        )
+        ->setMaxResults(1)
+        ->executeQuery()
+        ->fetchOne();
+
+    return ($sorting > 0 ? $sorting : 0) + 128;
+}
         /**
      * Löscht das vorhandene Snippet-Element auf der Seite (soft delete).
      * @return bool true, wenn ein Element gefunden und gelöscht wurde
@@ -162,5 +172,4 @@ public function delete(int $pid): bool
     if ($uid === null) { return false; }
     return $this->deleteByUid($uid);
 }
-
 }

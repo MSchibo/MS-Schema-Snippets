@@ -18,6 +18,13 @@ final class QueueService
             ->getConnectionForTable(self::TABLE);
     }
 
+    private function qb(string $table): \TYPO3\CMS\Core\Database\Query\QueryBuilder
+{
+    $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+    $qb->getRestrictions()->removeAll();
+    return $qb;
+}
+
     public function addOrUpdate(int $pageUid, string $mode, string $json, string $contentHash, string $reason = ''): void
     {
         $conn = $this->conn();
@@ -207,6 +214,9 @@ final class QueueService
     public function pageHasEnabledItems(int $pid): bool
     {
         $pidChain = $this->buildPidChainToRoot($pid);
+        if ($pidChain === []) {
+            return false;
+        }
 
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)
             ->getQueryBuilderForTable('tx_siterichsnippets_item');
@@ -260,4 +270,135 @@ final class QueueService
 
         return $chain;
     }
+
+    public function resolveEnabledTypesForPage(int $pid): array
+{
+    $pid = (int)$pid;
+    if ($pid <= 0) {
+        return [];
+    }
+
+    $types = [];
+
+    // 1) Alle aktiven Records direkt auf dieser Seite sammeln
+    $rows = $this->getEnabledItemRowsForPid($pid);
+    if ($rows !== []) {
+        foreach ($rows as $row) {
+            $types = array_merge($types, $this->extractTypesFromItemRow($row));
+        }
+        return array_values(array_unique(array_filter($types)));
+    }
+
+    // 2) Parent hochlaufen und alle vererbbaren Records sammeln
+    $parentPid = $this->getParentPid($pid);
+    while ($parentPid > 0) {
+        $parentRows = $this->getEnabledItemRowsForPid($parentPid);
+
+        if ($parentRows !== []) {
+            foreach ($parentRows as $parentRow) {
+                $inherit = (int)($parentRow['inherit'] ?? 1);
+                if ($inherit === 1) {
+                    $types = array_merge($types, $this->extractTypesFromItemRow($parentRow));
+                }
+            }
+
+            return array_values(array_unique(array_filter($types)));
+        }
+
+        $parentPid = $this->getParentPid($parentPid);
+    }
+
+    return [];
+}
+
+    private function extractTypesFromItemRow(array $row): array
+{
+    $types = [];
+
+    // 1) enabled_types (kommt meist als CSV-String, kann aber auch mal array-ish sein)
+    $raw = $row['enabled_types'] ?? '';
+    if (is_array($raw)) {
+        // Extrem-Fallback: falls irgendwo schon als Array geliefert
+        $parts = $raw;
+    } else {
+        $csv = trim((string)$raw);
+        $parts = ($csv !== '')
+            ? preg_split('/\s*,\s*/', $csv, -1, PREG_SPLIT_NO_EMPTY)
+            : [];
+    }
+
+    foreach ($parts as $t) {
+        $t = trim((string)$t);
+        if ($t === '') {
+            continue;
+        }
+        $types[] = $this->normalizeTypeIdentifier($t);
+    }
+
+    // 2) Fallback auf "type" (Single) für Abwärtskompatibilität
+    $single = trim((string)($row['type'] ?? ''));
+    if ($single !== '') {
+        $types[] = $this->normalizeTypeIdentifier($single);
+    }
+
+    // 3) final: filter + unique
+    $types = array_values(array_unique(array_filter($types, static fn($v) => $v !== '')));
+
+    return $types;
+}
+
+/**
+ * Normalisiert Identifier (v11/12/13 safe).
+ * Wichtig: mapped courseList/courselist -> "courselist" (dein TCA nutzt das).
+ */
+private function normalizeTypeIdentifier(string $id): string
+{
+    $id = strtolower(trim($id));
+
+    // Alias-Mapping (hier erweiterst du später weitere Aliase bei Bedarf)
+    $map = [
+        'course'     => 'courselist',
+        'courselist' => 'courselist',
+        'courseList' => 'courselist', // falls irgendwo camelCase reinkommt
+        'faqpage'    => 'faq',
+    ];
+
+    return $map[$id] ?? $id;
+}
+
+    private function getEnabledItemRowsForPid(int $pid): array
+{
+    $qb = $this->qb('tx_siterichsnippets_item');
+
+    $rows = $qb->select('*')
+        ->from('tx_siterichsnippets_item')
+        ->where(
+            $qb->expr()->eq('pid', $qb->createNamedParameter($pid, ParameterType::INTEGER)),
+            $qb->expr()->eq('deleted', $qb->createNamedParameter(0, ParameterType::INTEGER)),
+            $qb->expr()->eq('hidden', $qb->createNamedParameter(0, ParameterType::INTEGER)),
+            $qb->expr()->eq('active', $qb->createNamedParameter(1, ParameterType::INTEGER))
+        )
+        ->orderBy('sorting', 'ASC')
+        ->executeQuery()
+        ->fetchAllAssociative();
+
+    return is_array($rows) ? $rows : [];
+}
+
+    private function getParentPid(int $pid): int
+{
+    $qb = $this->qb('pages');
+
+    $row = $qb->select('pid')
+        ->from('pages')
+        ->where(
+            $qb->expr()->eq('uid', $qb->createNamedParameter($pid, ParameterType::INTEGER)),
+            $qb->expr()->eq('deleted', $qb->createNamedParameter(0, ParameterType::INTEGER))
+        )
+        ->setMaxResults(1)
+        ->executeQuery()
+        ->fetchAssociative();
+
+    return (int)($row['pid'] ?? 0);
+}
 }

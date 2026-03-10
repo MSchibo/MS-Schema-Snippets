@@ -24,11 +24,9 @@ final class ProcessApprovedQueueTask extends AbstractTask
 
             $this->log('queue_class', ['class' => get_class($queue)]);
 
-
             /** @var SnippetInserter $inserter */
             $inserter = GeneralUtility::makeInstance(SnippetInserter::class);
 
-            // pending zählen (Task 1 schreibt pending)
             $pendingCount = 0;
             try {
                 $pendingCount = count($queue->list('pending'));
@@ -37,7 +35,6 @@ final class ProcessApprovedQueueTask extends AbstractTask
             }
             $this->log('pending_count', ['count' => $pendingCount, 'batchLimit' => $batchLimit]);
 
-            // pending claimen -> processing
             $items = $queue->popPending($batchLimit);
             $this->log('pending_claimed', ['count' => count($items)]);
 
@@ -58,13 +55,8 @@ final class ProcessApprovedQueueTask extends AbstractTask
                 }
 
                 try {
-                    // auto-approve (für Nachvollziehbarkeit)
-                    $queue->setStatus($uid, 'approved', 'autoApproved');
-
-                    // einfügen
+                    $queue->setStatus($uid, 'approved', 'autoApprovedByScheduler');
                     $inserter->upsert($pid, $json, null);
-
-                    // done
                     $queue->setStatus($uid, 'done');
                     $ok++;
                 } catch (\Throwable $e) {

@@ -36,42 +36,45 @@ final class ContentAnalyzer
      * }
      */
     public function analyzePageContents(int $pageId): array
-    {
-        $conn = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('tt_content');
-        $qb = $conn->createQueryBuilder();
-        $rows = $qb->select('uid','CType','header','subheader','bodytext','list_type','pi_flexform')
-            ->from('tt_content')
-            ->where(
-                $qb->expr()->eq('pid', $qb->createNamedParameter($pageId, ParameterType::INTEGER)),
-                $qb->expr()->eq('deleted', $qb->createNamedParameter(0, ParameterType::INTEGER)),
-                $qb->expr()->eq('hidden',  $qb->createNamedParameter(0, ParameterType::INTEGER))
-            )
-            ->orderBy('sorting', 'ASC')
-            ->executeQuery()
-            ->fetchAllAssociative();
+{
+    $qb = GeneralUtility::makeInstance(ConnectionPool::class)
+        ->getQueryBuilderForTable('tt_content');
+    $qb->getRestrictions()->removeAll();
+
+    $rows = $qb->select('uid','pid','CType','header','subheader','bodytext','list_type','pi_flexform')
+        ->from('tt_content')
+        ->where(
+            $qb->expr()->eq('pid', $qb->createNamedParameter($pageId, ParameterType::INTEGER)),
+            $qb->expr()->eq('deleted', $qb->createNamedParameter(0, ParameterType::INTEGER)),
+            $qb->expr()->eq('hidden',  $qb->createNamedParameter(0, ParameterType::INTEGER))
+        )
+        ->orderBy('sorting', 'ASC')
+        ->executeQuery()
+        ->fetchAllAssociative();
 
         $headings=[]; $paragraphs=[]; $faqs=[]; $steps=[];
         $productHints=[]; $jobHints=[]; $eventHints=[]; $courses = [];
 
         foreach ($rows as $r) {
-            $bodyRaw = (string)($r['bodytext'] ?? '');
+            $bodyRaw   = (string)($r['bodytext'] ?? '');
             $headerRaw = (string)($r['header'] ?? '');
             $ctype = (string)$r['CType'];
             $ltype  = (string)($r['list_type'] ?? '');
-            $uid    = (int)$r['uid'];
+            $uid    = (int)$r['uid'];            
             $header = $this->clean($headerRaw);
             $body   = $this->clean($bodyRaw);
 
-            if ($header !== '') { $headings[] = $header; }
-            if ($body   !== '') { $paragraphs[] = $body; }
-            
-            // JSON-LD Script-Elemente ignorieren
+            // JSON-LD Script-Elemente / Snippet-CEs sofort ignorieren
             if (
                 stripos($bodyRaw, 'application/ld+json') !== false ||
                 stripos($headerRaw, 'JSON-LD (Rich Snippet)') !== false
             ) {
                 continue;
             }
+
+            if ($header !== '') { $headings[] = $header; }
+            if ($body   !== '') { $paragraphs[] = $body; }
+
 
             // ====== FAQ/Accordion-Erkennung ======
             $isAccordion = (bool)preg_match('~faq|accordion|toggle~i', $ctype . ' ' . $ltype)
@@ -87,20 +90,30 @@ final class ContentAnalyzer
                 }
             }
 
-                        // ====== Kurs-Erkennung (MVP für Phase 1) ======
-            $haystack = $header . ' ' . $body;
-            if (preg_match('~\b(Kurs|Course|Schulung|Training|Seminar)\b~i', $haystack)) {
-                $courseName = $header !== '' ? $header : $this->firstSentence($bodyRaw);
-                if ($courseName !== '') {
-                    $courses[] = [
-                        'name'         => $courseName,
-                        'description'  => $this->plainText($bodyRaw),
-                        // URL und Provider kannst du später in Phase 2 verfeinern
-                        'url'          => '',
-                        'providerName' => '',
-                    ];
-                }
-            }
+                       // ====== Kurs-Erkennung ======
+$courseText = trim($header . ' ' . $body);
+
+$hasCourseWord = (bool)preg_match(
+    '~\b(kurs|course|schulung|training|seminar|einsteigerkurs|online-kurs|onlinekurs)\b~i',
+    $courseText
+);
+
+$hasCourseMeta = (bool)preg_match(
+    '~\b(dauer|wochen|stunden|zielgruppe|einsteiger|fortgeschrittene|teilnahme|kurspreis|anmeldung)\b~i',
+    $courseText
+);
+
+if ($hasCourseWord && $hasCourseMeta) {
+    $courseName = $header !== '' ? $header : $this->firstSentence($bodyRaw);
+    if ($courseName !== '') {
+        $courses[] = [
+            'name'         => $courseName,
+            'description'  => $this->plainText($bodyRaw),
+            'url'          => '',
+            'providerName' => '',
+        ];
+    }
+}
 
 
             // ====== HowTo/Steps-Erkennung ======
@@ -118,20 +131,25 @@ final class ContentAnalyzer
             if (preg_match('~\b(job|stelle|ausschreibung|bewerbung|vollzeit|teilzeit)\b~i', $hay)) { $jobHints[] = true; }
             if (preg_match('~\b(event|veranstaltung|termin|beginn|start|datum)\b~i', $hay)) { $eventHints[] = true; }
 
-            // ====== Fallback: Normale Text-CEs als Q/A interpretieren ======
-            if (!$isAccordion && in_array($ctype, ['text','textmedia','html','list','textpic'], true)) {
-                if ($header) {
-                    $first = $this->firstSentence((string)$r['bodytext']);
-                    if ($first !== '') {
-                        $faqs[] = ['q' => $header, 'a' => $this->plainText($first)];
-                    }
-                }
-            }
-
             // ====== Beispiel: IRRE-Items unseres Test-CE auslesen (falls genutzt) ======
             if ($ctype === 'site_playground_accordion') {
                 $faqs = array_merge($faqs, $this->extractPlaygroundIrre($uid));
             }
+            if (
+    empty($courses) &&
+    !$isAccordion &&
+    in_array($ctype, ['text', 'textmedia', 'html', 'list', 'textpic'], true)
+) {
+    if ($header !== '') {
+        $answer = $this->plainText((string)$r['bodytext']);
+        if ($answer !== '' && mb_strlen($answer) >= 20) {
+            $faqs[] = [
+                'q' => $header,
+                'a' => $answer,
+            ];
+        }
+    }
+}
         }
 
         return [
@@ -358,69 +376,25 @@ final class ContentAnalyzer
      * Ergänzt erweiterte Hints für zusätzliche Schema-Typen.
      */
     public function enrichHints(array $analyzed): array
-    {
-        $hints = [
-            'faq' => !empty($analyzed['faqs']),
-            'howto' => !empty($analyzed['steps']),
-            'product' => false,
-            'job' => false,
-            'event' => false,
-            'organization' => false,
-            'software' => false,
-            'course' => false,
-        ];
+{
+    $hints = [
+        'faq'          => !empty($analyzed['faqs']),
+        'howto'        => !empty($analyzed['steps']),
+        'product'      => !empty($analyzed['productHints']),
+        'job'          => !empty($analyzed['jobHints']),
+        'event'        => !empty($analyzed['eventHints']),
+        'organization' => false,
+        'software'     => false,
+        'course'       => !empty($analyzed['courses']),
+    ];
 
-        $product = []; $event = []; $org = []; $software = []; $course = [];
+    $analyzed['hints'] = $hints;
+    $analyzed['product'] = [];
+    $analyzed['event'] = [];
+    $analyzed['org'] = [];
+    $analyzed['software'] = [];
+    $analyzed['course'] = [];
 
-        foreach (array_merge($analyzed['headings'], $analyzed['paragraphs']) as $text) {
-            // Produkt
-            if (preg_match('/\b(Produkt|Product|SKU|Preis|€|EUR)\b/i', $text)) {
-                $hints['product'] = true;
-                if (preg_match('/(?:€|\bEUR\b)\s*([0-9]+(?:[.,][0-9]{2})?)/u', $text, $m)) {
-                    $product['price'] = strtr($m[1], ',', '.');
-                    $product['currency'] = 'EUR';
-                }
-            }
-
-            // Job
-            if (preg_match('/\b(Job|Stelle|Ausschreibung|Vollzeit|Teilzeit|Bewerbung)\b/i', $text)) {
-                $hints['job'] = true;
-            }
-
-            // Event
-            if (preg_match('/\b(Event|Veranstaltung|Termin|Datum|Beginn)\b/i', $text)) {
-                $hints['event'] = true;
-                if (preg_match('/\b(\d{4}-\d{2}-\d{2})\b/', $text, $m)) {
-                    $event['start'] = $m[1];
-                }
-            }
-
-            // Organization
-            if (preg_match('/(Firma|Unternehmen|Organisation|Kontakt|Adresse|Telefon|Impressum)/i', $text)) {
-                $hints['organization'] = true;
-                if (preg_match('/\b(?:Tel\.?|Telefon)\s*[:\-]?\s*([+0-9\/\s\-]+)/i', $text, $m)) {
-                    $org['phone'] = trim($m[1]);
-                }
-            }
-
-            // Software/App
-            if (preg_match('/(Software|App|Download|Version|Windows|macOS|Linux|Android|iOS)/i', $text)) {
-                $hints['software'] = true;
-            }
-
-            // Course
-            if (preg_match('/(Kurs|Schulung|Training|Seminar)/i', $text)) {
-                $hints['course'] = true;
-            }
-        }
-
-        $analyzed['hints'] = $hints;
-        $analyzed['product'] = $product;
-        $analyzed['event'] = $event;
-        $analyzed['org'] = $org;
-        $analyzed['software'] = $software;
-        $analyzed['course'] = $course;
-
-        return $analyzed;
-    }
+    return $analyzed;
+}
 }

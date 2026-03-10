@@ -18,54 +18,66 @@ final class FaqSnippetType implements SnippetTypeInterface
     }
 
     public function isEnabledForPage(array $pageRow, array $analyzedData, array $settings = []): bool
-    {
-        $items = $this->extractItems($analyzedData);
-        return !empty($items);
+{
+    $items = $this->extractItems($analyzedData);
+    if (empty($items)) {
+        return false;
     }
+
+    // Wenn gleichzeitig klar eine Kursseite erkannt wurde,
+    // dann FAQ nicht aktivieren.
+    if (!empty($analyzedData['courses'])) {
+        return false;
+    }
+
+    return true;
+}
 
     public function build(array $pageRow, array $analyzedData, array $settings = []): array
-    {
-        $items = $this->extractItems($analyzedData);
-        if (empty($items)) {
-            return [];
-        }
-
-        $questions = [];
-        foreach ($items as $item) {
-            $q = trim((string)($item['q'] ?? $item['question'] ?? ''));
-            $a = trim((string)($item['a'] ?? $item['answer'] ?? ''));
-
-            if ($q === '' || $a === '') {
-                continue;
-            }
-
-            $aPlain = trim(strip_tags($a));
-            if ($aPlain === '') {
-                continue;
-            }
-
-            $questions[] = [
-                '@type' => 'Question',
-                'name'  => $q,
-                'acceptedAnswer' => [
-                    '@type' => 'Answer',
-                    'text'  => $aPlain,
-                ],
-            ];
-        }
-
-        if (empty($questions)) {
-            return [];
-        }
-
-        $snippet = [
-            '@type'      => 'FAQPage',
-            'name'       => (string)($pageRow['title'] ?? ''),
-            'mainEntity' => $questions,
-        ];
-
-        return [$snippet];
+{
+    if (!empty($analyzedData['courses'])) {
+        return [];
     }
+
+    $items = $this->extractItems($analyzedData);
+    if (empty($items)) {
+        return [];
+    }
+
+    $questions = [];
+    foreach ($items as $item) {
+        $q = trim((string)($item['q'] ?? $item['question'] ?? ''));
+        $a = trim((string)($item['a'] ?? $item['answer'] ?? ''));
+
+        if ($q === '' || $a === '') {
+            continue;
+        }
+
+        $aPlain = trim(strip_tags($a));
+        if ($aPlain === '') {
+            continue;
+        }
+
+        $questions[] = [
+            '@type' => 'Question',
+            'name' => $q,
+            'acceptedAnswer' => [
+                '@type' => 'Answer',
+                'text' => $aPlain,
+            ],
+        ];
+    }
+
+    if ($questions === []) {
+        return [];
+    }
+
+    return [[
+        '@type' => 'FAQPage',
+        'name' => (string)($pageRow['title'] ?? ''),
+        'mainEntity' => $questions,
+    ]];
+}
 
     /**
      * Erwartet vom Analyzer z.B.:

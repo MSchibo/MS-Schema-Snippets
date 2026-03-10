@@ -41,7 +41,7 @@ return [
     'types' => [
         '1' => [
             'showitem' =>
-                'hidden, active, type, variant, hash,'
+                'hidden, active, type, variant, hash, inherit, enabled_types,'
                 . '--div--;Konfiguration, config,'
                 . '--div--;Daten, data,'
                 . '--div--;Meta, pid, crdate, tstamp',
@@ -80,20 +80,59 @@ return [
             ],
         ],
 
+        'inherit' => [
+    'exclude' => true,
+    'label' => 'Vererbung auf Unterseiten',
+    'description' => 'Wenn aktiv, gilt diese Konfiguration auch für Unterseiten (bis eine Unterseite einen eigenen Item-Record hat).',
+    'config' => [
+        'type' => 'check',
+        'renderType' => 'checkboxToggle',
+        'items' => [
+            ['', 1],
+        ],
+        'default' => 1,
+    ],
+],
+
+'enabled_types' => [
+    'exclude' => true,
+    'label' => 'Aktive Snippet-Typen (mehrfach)',
+    'description' => 'Wenn gesetzt, werden diese Typen für die Seite verwendet. Leer = Fallback auf Feld "Snippet-Typ" (Single).',
+    'config' => [
+        'type' => 'select',
+        'renderType' => 'selectMultipleSideBySide',
+        'size' => 10,
+        'maxitems' => 99,
+        'items' => [
+            ['Kursliste', 'courselist'],
+            ['FAQ', 'faq'],
+            ['Fragen & Antworten', 'qna'],
+            ['Artikel', 'article'],
+            ['Navigationspfad (Breadcrumb)', 'breadcrumb'],
+            ['Karussell', 'carousel'],
+            ['Bild-Metadaten', 'imagemetadata'],
+            ['Lokales Unternehmen', 'localbusiness'],
+            ['Organisation', 'organization'],
+            ['Produkt', 'product'],
+        ],
+        'default' => '',
+    ],
+],
+
         'type' => [
             'label' => 'Snippet-Typ',
             'config' => [
                 'type' => 'select',
                 'renderType' => 'selectSingle',
                 'items' => [
-                    ['Kursliste', 'courseList'],
+                    ['Kursliste', 'courselist'],
                     ['FAQ', 'faq'],
                     ['Fragen & Antworten', 'qna'],
                     ['Artikel', 'article'],
                     ['Navigationspfad (Breadcrumb)', 'breadcrumb'],
                     ['Karussell', 'carousel'],
-                    ['Bild-Metadaten', 'imageMetadata'],
-                    ['Lokales Unternehmen', 'localBusiness'],
+                    ['Bild-Metadaten', 'imagemetadata'],
+                    ['Lokales Unternehmen', 'localbusiness'],
                     ['Organisation', 'organization'],
                     ['Produkt', 'product'],
                 ],

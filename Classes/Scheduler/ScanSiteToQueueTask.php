@@ -30,13 +30,15 @@ final class ScanSiteToQueueTask extends AbstractTask
             }
 
             /** @var PageTreeScanner $scanner */
-            $scanner  = GeneralUtility::makeInstance(PageTreeScanner::class);
-            /** @var ContentAnalyzer $analyzer */
-            $analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
-            /** @var SnippetService $snippetService */
-            $snippetService = GeneralUtility::makeInstance(SnippetService::class);
-            /** @var QueueInterface $queue */
-            $queue    = QueueFactory::create();
+$scanner  = GeneralUtility::makeInstance(PageTreeScanner::class);
+/** @var ContentAnalyzer $analyzer */
+$analyzer = GeneralUtility::makeInstance(ContentAnalyzer::class);
+/** @var SnippetService $snippetService */
+$snippetService = GeneralUtility::makeInstance(SnippetService::class);
+/** @var QueueInterface $queue */
+$queue    = QueueFactory::create();
+/** @var \MyVendor\SiteRichSnippets\Service\QueueService $queueService */
+$queueService = GeneralUtility::makeInstance(\MyVendor\SiteRichSnippets\Service\QueueService::class);
 
             $pages = $scanner->fetchAllPages($rootPid);
             $this->log('pages', ['count' => is_array($pages) ? count($pages) : 0]);
@@ -67,6 +69,10 @@ final class ScanSiteToQueueTask extends AbstractTask
             foreach ($pages as $pRow) {
                 $pid = (int)($pRow['uid'] ?? 0);
                 if ($pid <= 0) {
+                    continue;
+                }
+
+                if (!$queueService->pageHasEnabledItems($pid)) {
                     continue;
                 }
 
