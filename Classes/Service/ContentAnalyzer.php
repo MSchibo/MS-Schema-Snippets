@@ -131,6 +131,22 @@ if ($hasCourseWord && $hasCourseMeta) {
             if (preg_match('~\b(job|stelle|ausschreibung|bewerbung|vollzeit|teilzeit)\b~i', $hay)) { $jobHints[] = true; }
             if (preg_match('~\b(event|veranstaltung|termin|beginn|start|datum)\b~i', $hay)) { $eventHints[] = true; }
 
+            // ====== Fallback: Normale Text-CEs als Q/A interpretieren ======
+if (
+    !$isAccordion
+    && in_array($ctype, ['text', 'textmedia', 'html', 'list', 'textpic'], true)
+) {
+    if ($header !== '') {
+        $answer = $this->plainText((string)$r['bodytext']);
+        if ($answer !== '') {
+            $faqs[] = [
+                'q' => $header,
+                'a' => $answer,
+            ];
+        }
+    }
+}
+
             // ====== Beispiel: IRRE-Items unseres Test-CE auslesen (falls genutzt) ======
             if ($ctype === 'site_playground_accordion') {
                 $faqs = array_merge($faqs, $this->extractPlaygroundIrre($uid));

@@ -48,7 +48,7 @@ $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['site_richsnippets'] = array_replace(
         'runStrategy' => 'onSave',
         'batchLimit'  => 50,
         // CSV der aktivierten Typen (leer = alle)
-        'enabledTypes' => 'faq,courselist',
+        'enabledTypes' => 'faq,courselist, qna',
     ],
     $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['site_richsnippets'] ?? []
 );

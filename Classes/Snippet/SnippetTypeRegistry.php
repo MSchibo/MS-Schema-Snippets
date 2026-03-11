@@ -15,6 +15,7 @@ final class SnippetTypeRegistry
     private const TYPE_CLASSES = [
     \MyVendor\SiteRichSnippets\Snippet\Type\CourseListSnippetType::class,
     \MyVendor\SiteRichSnippets\Snippet\Type\FaqSnippetType::class,
+    \MyVendor\SiteRichSnippets\Snippet\Type\QaSnippetType::class,
 ];
 
     /** @var SnippetTypeInterface[]|null */
@@ -61,10 +62,10 @@ final class SnippetTypeRegistry
 
     $enabledForPage = $this->normalizeTypeList($qs->resolveEnabledTypesForPage($pid));
 
-    // WICHTIG:
-    // Leere Page-Liste bedeutet NICHT mehr "alles blockieren",
-    // sondern "kein zusätzlicher Page-Filter".
-    $usePageFilter = ($enabledForPage !== []);
+    // Wenn für die Seite nichts aktiv ist -> nichts ausgeben
+    if ($enabledForPage === []) {
+        return [];
+    }
 
     $out = [];
     foreach ($this->getAllTypes() as $identifier => $type) {
@@ -75,8 +76,8 @@ final class SnippetTypeRegistry
             continue;
         }
 
-        // 2) Pro Seite nur filtern, wenn wirklich etwas konfiguriert wurde
-        if ($usePageFilter && !in_array($identifier, $enabledForPage, true)) {
+        // 2) Pro Seite
+        if (!in_array($identifier, $enabledForPage, true)) {
             continue;
         }
 

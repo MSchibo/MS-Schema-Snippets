@@ -278,27 +278,27 @@ final class QueueService
         return [];
     }
 
-    $types = [];
-
-    // 1) Alle aktiven Records direkt auf dieser Seite sammeln
+    // 1) Eigene aktive Records auf dieser Seite haben immer Vorrang
     $rows = $this->getEnabledItemRowsForPid($pid);
     if ($rows !== []) {
+        $types = [];
         foreach ($rows as $row) {
             $types = array_merge($types, $this->extractTypesFromItemRow($row));
         }
         return array_values(array_unique(array_filter($types)));
     }
 
-    // 2) Parent hochlaufen und alle vererbbaren Records sammeln
+    // 2) Sonst Parent-Kette hochlaufen
     $parentPid = $this->getParentPid($pid);
     while ($parentPid > 0) {
         $parentRows = $this->getEnabledItemRowsForPid($parentPid);
 
         if ($parentRows !== []) {
-            foreach ($parentRows as $parentRow) {
-                $inherit = (int)($parentRow['inherit'] ?? 1);
-                if ($inherit === 1) {
-                    $types = array_merge($types, $this->extractTypesFromItemRow($parentRow));
+            $types = [];
+
+            foreach ($parentRows as $row) {
+                if ((int)($row['inherit'] ?? 1) === 1) {
+                    $types = array_merge($types, $this->extractTypesFromItemRow($row));
                 }
             }
 
@@ -355,12 +355,13 @@ private function normalizeTypeIdentifier(string $id): string
 {
     $id = strtolower(trim($id));
 
-    // Alias-Mapping (hier erweiterst du später weitere Aliase bei Bedarf)
     $map = [
-        'course'     => 'courselist',
-        'courselist' => 'courselist',
-        'courseList' => 'courselist', // falls irgendwo camelCase reinkommt
-        'faqpage'    => 'faq',
+        'course'      => 'courselist',
+        'course_list' => 'courselist',
+        'courselist'  => 'courselist',
+        'faqpage'     => 'faq',
+        'qa'          => 'qna',
+        'qapage'      => 'qna',
     ];
 
     return $map[$id] ?? $id;

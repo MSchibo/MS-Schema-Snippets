@@ -20,17 +20,7 @@ final class FaqSnippetType implements SnippetTypeInterface
     public function isEnabledForPage(array $pageRow, array $analyzedData, array $settings = []): bool
 {
     $items = $this->extractItems($analyzedData);
-    if (empty($items)) {
-        return false;
-    }
-
-    // Wenn gleichzeitig klar eine Kursseite erkannt wurde,
-    // dann FAQ nicht aktivieren.
-    if (!empty($analyzedData['courses'])) {
-        return false;
-    }
-
-    return true;
+    return !empty($items);
 }
 
     public function build(array $pageRow, array $analyzedData, array $settings = []): array
