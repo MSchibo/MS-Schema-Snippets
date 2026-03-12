@@ -47,25 +47,19 @@ final class QaSnippetType implements SnippetTypeInterface
             return [];
         }
 
-        $snippet = [
+        return [[
             '@type' => 'QAPage',
+            'name' => $question,
             'mainEntity' => [
                 '@type' => 'Question',
                 'name' => $question,
-                'text' => $question,
                 'answerCount' => 1,
                 'acceptedAnswer' => [
                     '@type' => 'Answer',
                     'text' => $answerPlain,
                 ],
             ],
-        ];
-
-        if (!empty($pageRow['title'])) {
-            $snippet['name'] = (string)$pageRow['title'];
-        }
-
-        return [$snippet];
+        ]];
     }
 
     private function extractItems(array $analyzedData): array

@@ -54,6 +54,14 @@ final class ContentAnalyzer
 
         $headings=[]; $paragraphs=[]; $faqs=[]; $steps=[];
         $productHints=[]; $jobHints=[]; $eventHints=[]; $courses = [];
+        $org = [
+            'name' => '',
+            'description' => '',
+            'email' => '',
+            'telephone' => '',
+            'url' => '',
+        ];
+        $organizationHints = [];
 
         foreach ($rows as $r) {
             $bodyRaw   = (string)($r['bodytext'] ?? '');
@@ -74,6 +82,40 @@ final class ContentAnalyzer
 
             if ($header !== '') { $headings[] = $header; }
             if ($body   !== '') { $paragraphs[] = $body; }
+
+            $haystackFull = trim($header . ' ' . $body);
+
+// Unternehmens-/Organisations-Hinweise
+if (preg_match('~\b(unternehmen|firma|organisation|akademie|team|über uns|kontakt|kontaktieren)\b~iu', $haystackFull)) {
+    $organizationHints[] = true;
+}
+
+// Beschreibung: erste passende inhaltliche Beschreibung merken
+if ($org['description'] === '' && $body !== '') {
+    if (preg_match('~\b(unternehmen|firma|akademie|team|schulung|dienstleistung|angebot)\b~iu', $haystackFull)) {
+        $org['description'] = $body;
+    }
+}
+
+// Name: bevorzugt aus Header, wenn typisch organisatorisch
+if ($org['name'] === '' && $header !== '') {
+    if (preg_match('~\b(akademie|unternehmen|firma|gmbh|ug|agentur)\b~iu', $header)) {
+        $org['name'] = $header;
+    }
+}
+
+// E-Mail extrahieren
+if ($org['email'] === '' && preg_match('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/iu', $bodyRaw, $m)) {
+    $org['email'] = trim((string)$m[0]);
+}
+
+// Telefon extrahieren
+if (
+    $org['telephone'] === ''
+    && preg_match('~(?:\+?\d[\d\s\/\-\(\)]{5,}\d)~u', $bodyRaw, $m)
+) {
+    $org['telephone'] = trim((string)$m[0]);
+}
 
 
             // ====== FAQ/Accordion-Erkennung ======
@@ -169,14 +211,16 @@ if (
         }
 
         return [
-            'headings'     => array_values(array_unique(array_filter($headings))),
-            'paragraphs'   => array_values(array_filter($paragraphs)),
-            'faqs'         => $this->uniqueFaqs($faqs),
-            'steps'        => $steps,
-            'productHints' => $productHints,
-            'jobHints'     => $jobHints,
-            'eventHints'   => $eventHints,
-            'courses'      => $courses
+            'headings'          => array_values(array_unique(array_filter($headings))),
+            'paragraphs'        => array_values(array_filter($paragraphs)),
+            'faqs'              => $this->uniqueFaqs($faqs),
+            'steps'             => $steps,
+            'productHints'      => $productHints,
+            'jobHints'          => $jobHints,
+            'eventHints'        => $eventHints,
+            'organizationHints' => $organizationHints,
+            'courses'           => $courses,
+            'org'               => $org,
         ];
     }
 
@@ -399,7 +443,7 @@ if (
         'product'      => !empty($analyzed['productHints']),
         'job'          => !empty($analyzed['jobHints']),
         'event'        => !empty($analyzed['eventHints']),
-        'organization' => false,
+        'organization' => !empty($analyzed['organizationHints']),
         'software'     => false,
         'course'       => !empty($analyzed['courses']),
     ];
@@ -407,9 +451,9 @@ if (
     $analyzed['hints'] = $hints;
     $analyzed['product'] = [];
     $analyzed['event'] = [];
-    $analyzed['org'] = [];
+    $analyzed['org'] = is_array($analyzed['org'] ?? null) ? $analyzed['org'] : [];
     $analyzed['software'] = [];
-    $analyzed['course'] = [];
+    $analyzed['course'] = $analyzed['course'] ?? [];
 
     return $analyzed;
 }
