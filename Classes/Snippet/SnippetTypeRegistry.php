@@ -18,6 +18,7 @@ final class SnippetTypeRegistry
     \MyVendor\SiteRichSnippets\Snippet\Type\QaSnippetType::class,
     \MyVendor\SiteRichSnippets\Snippet\Type\OrganizationSnippetType::class,
     \MyVendor\SiteRichSnippets\Snippet\Type\BreadcrumbSnippetType::class,
+    \MyVendor\SiteRichSnippets\Snippet\Type\ProductSnippetType::class,
 ];
 
     /** @var SnippetTypeInterface[]|null */

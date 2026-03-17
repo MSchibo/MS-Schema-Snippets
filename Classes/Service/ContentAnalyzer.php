@@ -41,7 +41,7 @@ final class ContentAnalyzer
         ->getQueryBuilderForTable('tt_content');
     $qb->getRestrictions()->removeAll();
 
-    $rows = $qb->select('uid','pid','CType','header','subheader','bodytext','list_type','pi_flexform')
+    $rows = $qb->select('uid','pid','CType','header','subheader','bodytext','list_type','pi_flexform','image','assets')
         ->from('tt_content')
         ->where(
             $qb->expr()->eq('pid', $qb->createNamedParameter($pageId, ParameterType::INTEGER)),
@@ -54,6 +54,17 @@ final class ContentAnalyzer
 
         $headings=[]; $paragraphs=[]; $faqs=[]; $steps=[];
         $productHints=[]; $jobHints=[]; $eventHints=[]; $courses = [];
+
+        $product = [
+            'name' => '',
+            'description' => '',
+            'sku' => '',
+            'brand' => '',
+            'price' => '',
+            'currency' => 'EUR',
+            'image' => '',
+        ];
+
         $org = [
             'name' => '',
             'description' => '',
@@ -84,6 +95,57 @@ final class ContentAnalyzer
             if ($body   !== '') { $paragraphs[] = $body; }
 
             $haystackFull = trim($header . ' ' . $body);
+
+            // Produkt-Hinweise / Produktdaten
+if (preg_match('~\b(produkt|product|artikel|modell|sku|preis|price)\b~iu', $haystackFull)) {
+    $productHints[] = true;
+}
+
+// Produktname
+if ($product['name'] === '' && $header !== '') {
+    if (preg_match('~\b(produkt|product|artikel|modell)\b~iu', $haystackFull) || !empty($productHints)) {
+        $product['name'] = $header;
+    }
+}
+
+// Produktbeschreibung
+if ($product['description'] === '' && $body !== '') {
+    if (!empty($productHints)) {
+        $product['description'] = $body;
+    }
+}
+
+// SKU extrahieren
+if (
+    $product['sku'] === ''
+    && preg_match('~\b(?:sku|artikelnummer|art\.?-?nr\.?)\s*[:#]?\s*([A-Z0-9\-_]+)~iu', $bodyRaw, $m)
+) {
+    $product['sku'] = trim((string)$m[1]);
+}
+
+// Preis extrahieren
+if (
+    $product['price'] === ''
+    && preg_match('~(\d+[.,]\d{2})\s*(€|EUR)~u', $bodyRaw, $m)
+) {
+    $product['price'] = str_replace(',', '.', trim((string)$m[1]));
+    $product['currency'] = 'EUR';
+}
+
+// Marke extrahieren
+if (
+    $product['brand'] === ''
+    && preg_match('~\bmarke\s*:\s*(.+)~iu', $bodyRaw, $m)
+) {
+    $product['brand'] = trim(strip_tags((string)$m[1]));
+}
+
+if ($product['image'] === '') {
+    $image = $this->findFirstImageUrlForContentElement($uid);
+    if ($image !== '') {
+        $product['image'] = $image;
+    }
+}
 
 // Unternehmens-/Organisations-Hinweise
 if (preg_match('~\b(unternehmen|firma|organisation|akademie|team|über uns|kontakt|kontaktieren)\b~iu', $haystackFull)) {
@@ -169,7 +231,6 @@ if ($hasCourseWord && $hasCourseMeta) {
             }
 
             $hay = $ctype.' '.$header.' '.$body;
-            if (preg_match('~\b(product|produkt|sku|preis|price)\b~i', $hay)) { $productHints[] = true; }
             if (preg_match('~\b(job|stelle|ausschreibung|bewerbung|vollzeit|teilzeit)\b~i', $hay)) { $jobHints[] = true; }
             if (preg_match('~\b(event|veranstaltung|termin|beginn|start|datum)\b~i', $hay)) { $eventHints[] = true; }
 
@@ -220,6 +281,7 @@ if (
             'eventHints'        => $eventHints,
             'organizationHints' => $organizationHints,
             'courses'           => $courses,
+            'product'           => $product,
             'org'               => $org,
         ];
     }
@@ -449,12 +511,63 @@ if (
     ];
 
     $analyzed['hints'] = $hints;
-    $analyzed['product'] = [];
+    $analyzed['product'] = is_array($analyzed['product'] ?? null)
+    ? $analyzed['product']
+    : [];
     $analyzed['event'] = [];
     $analyzed['org'] = is_array($analyzed['org'] ?? null) ? $analyzed['org'] : [];
     $analyzed['software'] = [];
     $analyzed['course'] = $analyzed['course'] ?? [];
 
     return $analyzed;
+}
+
+private function findFirstImageUrlForContentElement(int $contentUid): string
+{
+    $qb = GeneralUtility::makeInstance(ConnectionPool::class)
+        ->getQueryBuilderForTable('sys_file_reference');
+    $qb->getRestrictions()->removeAll();
+
+    $row = $qb->select('uid_local')
+        ->from('sys_file_reference')
+        ->where(
+            $qb->expr()->eq('tablenames', $qb->createNamedParameter('tt_content')),
+            $qb->expr()->eq('fieldname', $qb->createNamedParameter('assets')),
+            $qb->expr()->eq('uid_foreign', $qb->createNamedParameter($contentUid, ParameterType::INTEGER)),
+            $qb->expr()->eq('deleted', $qb->createNamedParameter(0, ParameterType::INTEGER)),
+            $qb->expr()->eq('hidden', $qb->createNamedParameter(0, ParameterType::INTEGER))
+        )
+        ->orderBy('sorting_foreign', 'ASC')
+        ->setMaxResults(1)
+        ->executeQuery()
+        ->fetchAssociative();
+
+    if (!$row) {
+        return '';
+    }
+
+    $fileUid = (int)($row['uid_local'] ?? 0);
+    if ($fileUid <= 0) {
+        return '';
+    }
+
+    $qb = GeneralUtility::makeInstance(ConnectionPool::class)
+        ->getQueryBuilderForTable('sys_file');
+    $qb->getRestrictions()->removeAll();
+
+    $fileRow = $qb->select('identifier')
+        ->from('sys_file')
+        ->where(
+            $qb->expr()->eq('uid', $qb->createNamedParameter($fileUid, ParameterType::INTEGER))
+        )
+        ->setMaxResults(1)
+        ->executeQuery()
+        ->fetchAssociative();
+
+    if (!$fileRow) {
+        return '';
+    }
+
+    return (string)($fileRow['identifier'] ?? '');
 }
 }
