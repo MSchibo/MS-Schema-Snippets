@@ -278,47 +278,66 @@ final class QueueService
         return [];
     }
 
-    // 1) Eigene aktive Records auf dieser Seite haben immer Vorrang
+    $localTypes = [];
+    $globalAdditiveTypes = [];
+
+    // 1) Eigene aktive Records auf dieser Seite haben Vorrang
     $rows = $this->getEnabledItemRowsForPid($pid);
     if ($rows !== []) {
-        $types = [];
         foreach ($rows as $row) {
-            $types = array_merge($types, $this->extractTypesFromItemRow($row));
+            $localTypes = array_merge($localTypes, $this->extractTypesFromItemRow($row));
         }
-        return array_values(array_unique(array_filter($types)));
-    }
+    } else {
+        // 2) Sonst nächstliegenden vererbbaren Parent für lokale Typen suchen
+        $parentPid = $this->getParentPid($pid);
+        while ($parentPid > 0) {
+            $parentRows = $this->getEnabledItemRowsForPid($parentPid);
 
-    // 2) Sonst Parent-Kette hochlaufen
-    $parentPid = $this->getParentPid($pid);
-    while ($parentPid > 0) {
-        $parentRows = $this->getEnabledItemRowsForPid($parentPid);
-
-        if ($parentRows !== []) {
-            $types = [];
-
-            foreach ($parentRows as $row) {
-                if ((int)($row['inherit'] ?? 1) === 1) {
-                    $types = array_merge($types, $this->extractTypesFromItemRow($row));
+            if ($parentRows !== []) {
+                foreach ($parentRows as $row) {
+                    if ((int)($row['inherit'] ?? 1) === 1) {
+                        $localTypes = array_merge($localTypes, $this->extractTypesFromItemRow($row));
+                    }
                 }
+                break;
             }
 
-            return array_values(array_unique(array_filter($types)));
+            $parentPid = $this->getParentPid($parentPid);
+        }
+    }
+
+    // 3) Additive globale Typen separat aus der gesamten Parent-Kette sammeln
+    $parentPid = $pid;
+    while ($parentPid > 0) {
+        $rows = $this->getEnabledItemRowsForPid($parentPid);
+
+        foreach ($rows as $row) {
+            if ((int)($row['inherit'] ?? 1) !== 1) {
+                continue;
+            }
+
+            $types = $this->extractTypesFromItemRow($row);
+            foreach ($types as $type) {
+                if ($type === 'breadcrumb') {
+                    $globalAdditiveTypes[] = $type;
+                }
+            }
         }
 
         $parentPid = $this->getParentPid($parentPid);
     }
 
-    return [];
+    return array_values(array_unique(array_filter(array_merge($localTypes, $globalAdditiveTypes))));
 }
 
     private function extractTypesFromItemRow(array $row): array
 {
     $types = [];
 
-    // 1) enabled_types (kommt meist als CSV-String, kann aber auch mal array-ish sein)
+    // 1) enabled_types hat Vorrang
     $raw = $row['enabled_types'] ?? '';
+
     if (is_array($raw)) {
-        // Extrem-Fallback: falls irgendwo schon als Array geliefert
         $parts = $raw;
     } else {
         $csv = trim((string)$raw);
@@ -328,23 +347,24 @@ final class QueueService
     }
 
     foreach ($parts as $t) {
-        $t = trim((string)$t);
-        if ($t === '') {
-            continue;
+        $t = $this->normalizeTypeIdentifier((string)$t);
+        if ($t !== '') {
+            $types[] = $t;
         }
-        $types[] = $this->normalizeTypeIdentifier($t);
     }
 
-    // 2) Fallback auf "type" (Single) für Abwärtskompatibilität
+    // Wenn enabled_types befüllt ist, NICHT zusätzlich type mischen
+    if ($types !== []) {
+        return array_values(array_unique(array_filter($types)));
+    }
+
+    // 2) Fallback auf type nur wenn enabled_types leer ist
     $single = trim((string)($row['type'] ?? ''));
     if ($single !== '') {
         $types[] = $this->normalizeTypeIdentifier($single);
     }
 
-    // 3) final: filter + unique
-    $types = array_values(array_unique(array_filter($types, static fn($v) => $v !== '')));
-
-    return $types;
+    return array_values(array_unique(array_filter($types)));
 }
 
 /**

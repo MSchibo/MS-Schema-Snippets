@@ -17,8 +17,10 @@ final class SnippetTypeRegistry
     \MyVendor\SiteRichSnippets\Snippet\Type\FaqSnippetType::class,
     \MyVendor\SiteRichSnippets\Snippet\Type\QaSnippetType::class,
     \MyVendor\SiteRichSnippets\Snippet\Type\OrganizationSnippetType::class,
+    \MyVendor\SiteRichSnippets\Snippet\Type\LocalBusinessSnippetType::class,
     \MyVendor\SiteRichSnippets\Snippet\Type\BreadcrumbSnippetType::class,
     \MyVendor\SiteRichSnippets\Snippet\Type\ProductSnippetType::class,
+    \MyVendor\SiteRichSnippets\Snippet\Type\ArticleSnippetType::class,
 ];
 
     /** @var SnippetTypeInterface[]|null */
